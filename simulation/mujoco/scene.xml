@@ -1,0 +1,219 @@
+<mujoco model="twinhands_dual_so101_dining_workcell">
+  <compiler angle="degree" coordinate="local" inertiafromgeom="true" meshdir="assets"/>
+  <option timestep="0.002" gravity="0 0 -9.81" integrator="RK4">
+    <flag contact="enable" energy="enable"/>
+  </option>
+
+  <asset>
+    <!-- Materials -->
+    <texture name="grid_floor" type="2d" builtin="checker" width="512" height="512" rgb1="0.1 0.12 0.16" rgb2="0.06 0.08 0.12"/>
+    <material name="mat_floor" texture="grid_floor" texrepeat="10 10" reflectance="0.1"/>
+    
+    <!-- Table Materials -->
+    <material name="tabletop_dark" rgba="0.12 0.16 0.22 1.0" specular="0.2" roughness="0.8"/>
+    <material name="steel_legs" rgba="0.08 0.10 0.15 1.0" specular="0.6"/>
+
+    <!-- Spider-Man Industrial Robot Theme -->
+    <material name="spiderman_red" rgba="0.75 0.11 0.11 1.0" specular="0.4" shininess="0.3"/>
+    <material name="spiderman_navy" rgba="0.08 0.12 0.20 1.0" specular="0.3" shininess="0.2"/>
+    <material name="metallic_black" rgba="0.10 0.10 0.12 1.0" specular="0.8"/>
+    <material name="gripper_rubber" rgba="0.15 0.15 0.15 1.0" friction="1.4 0.08 0.005"/>
+
+    <!-- Tableware Materials -->
+    <material name="ceramic_white" rgba="0.96 0.97 0.98 1.0" specular="0.7" shininess="0.6"/>
+    <material name="stainless_steel" rgba="0.80 0.82 0.85 1.0" specular="0.9" shininess="0.8"/>
+    <material name="clear_glass" rgba="0.65 0.85 0.95 0.35" specular="0.9" shininess="0.9"/>
+    <material name="safety_orange" rgba="0.96 0.62 0.07 1.0" specular="0.3" roughness="0.6"/>
+  </asset>
+
+  <worldbody>
+    <!-- Ambient & Key Lighting -->
+    <light directional="true" pos="0 -1.5 3.0" dir="0 0.4 -0.9" diffuse="0.8 0.8 0.8" specular="0.3 0.3 0.3"/>
+    <light directional="true" pos="0 1.5 3.0" dir="0 -0.4 -0.9" diffuse="0.4 0.4 0.5" specular="0.1 0.1 0.1"/>
+
+    <!-- Floor -->
+    <geom name="floor" type="plane" size="5 5 0.1" material="mat_floor"/>
+
+    <!-- Overhead Perception Camera for Intel OpenVINO -->
+    <camera name="overhead_camera" pos="0 0 2.2" euler="0 0 0" fovy="60"/>
+    <!-- Angled Inspection Camera -->
+    <camera name="front_inspection" pos="0 -1.6 1.4" euler="65 0 0" fovy="55"/>
+
+    <!-- ============================================================= -->
+    <!-- DEMONSTRATION TABLE (1.2m x 0.8m x 0.75m)                     -->
+    <!-- ============================================================= -->
+    <body name="dining_table" pos="0 0 0.75">
+      <!-- Tabletop (1.2m width x 0.8m depth x 0.032m thickness) -->
+      <geom name="tabletop" type="box" size="0.60 0.40 0.016" pos="0 0 -0.016" material="tabletop_dark"/>
+      <!-- Four Legs -->
+      <geom name="leg_fl" type="cylinder" size="0.025 0.367" pos="-0.54 -0.34 -0.383" material="steel_legs"/>
+      <geom name="leg_fr" type="cylinder" size="0.025 0.367" pos="0.54 -0.34 -0.383" material="steel_legs"/>
+      <geom name="leg_bl" type="cylinder" size="0.025 0.367" pos="-0.54 0.34 -0.383" material="steel_legs"/>
+      <geom name="leg_br" type="cylinder" size="0.025 0.367" pos="0.54 0.34 -0.383" material="steel_legs"/>
+    </body>
+
+    <!-- ============================================================= -->
+    <!-- 🔴 LEFT SO-101 ROBOTIC ARM (Spider-Man Red Primary)           -->
+    <!-- Base position: [-0.38, -0.42, 0.75]                           -->
+    <!-- ============================================================= -->
+    <body name="left_arm_base" pos="-0.38 -0.42 0.75">
+      <geom name="left_base_mount" type="cylinder" size="0.06 0.03" pos="0 0 0.03" material="spiderman_navy"/>
+
+      <!-- Joint 1: Waist Pan -->
+      <body name="left_shoulder_turret" pos="0 0 0.06">
+        <joint name="left_q1_waist" type="hinge" axis="0 0 1" range="-180 180" damping="0.5"/>
+        <geom name="left_turret_geom" type="box" size="0.045 0.045 0.03" material="spiderman_red"/>
+
+        <!-- Joint 2: Shoulder Lift -->
+        <body name="left_upper_arm" pos="0 0 0.04">
+          <joint name="left_q2_shoulder" type="hinge" axis="0 1 0" range="-45 135" damping="0.8"/>
+          <geom name="left_upper_link" type="capsule" fromto="0 0 0 0 0 0.22" size="0.025" material="spiderman_red"/>
+
+          <!-- Joint 3: Elbow Flex -->
+          <body name="left_forearm" pos="0 0 0.22">
+            <joint name="left_q3_elbow" type="hinge" axis="0 1 0" range="-120 90" damping="0.6"/>
+            <geom name="left_forearm_link" type="capsule" fromto="0 0 0 0 0 0.20" size="0.022" material="spiderman_navy"/>
+
+            <!-- Joint 4: Wrist Pitch -->
+            <body name="left_wrist_pitch" pos="0 0 0.20">
+              <joint name="left_q4_wrist_pitch" type="hinge" axis="0 1 0" range="-90 90" damping="0.3"/>
+              <geom name="left_wrist_box" type="box" size="0.025 0.025 0.02" material="metallic_black"/>
+
+              <!-- Joint 5: Wrist Roll -->
+              <body name="left_wrist_roll" pos="0 0 0.03">
+                <joint name="left_q5_wrist_roll" type="hinge" axis="0 0 1" range="-180 180" damping="0.2"/>
+                <geom name="left_gripper_palm" type="box" size="0.04 0.025 0.02" material="spiderman_red"/>
+
+                <!-- Left Parallel Gripper Fingers -->
+                <body name="left_gripper_finger_l" pos="-0.025 0 0.03">
+                  <joint name="left_gripper_slide_l" type="slide" axis="1 0 0" range="-0.025 0" damping="0.1"/>
+                  <geom name="left_finger_geom_l" type="box" size="0.006 0.015 0.035" material="gripper_rubber"/>
+                </body>
+                <body name="left_gripper_finger_r" pos="0.025 0 0.03">
+                  <joint name="left_gripper_slide_r" type="slide" axis="-1 0 0" range="-0.025 0" damping="0.1"/>
+                  <geom name="left_finger_geom_r" type="box" size="0.006 0.015 0.035" material="gripper_rubber"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+
+    <!-- ============================================================= -->
+    <!-- 🔵 RIGHT SO-101 ROBOTIC ARM (Spider-Man Mirror Counterpart)   -->
+    <!-- Base position: [+0.38, -0.42, 0.75]                           -->
+    <!-- ============================================================= -->
+    <body name="right_arm_base" pos="0.38 -0.42 0.75">
+      <geom name="right_base_mount" type="cylinder" size="0.06 0.03" pos="0 0 0.03" material="spiderman_navy"/>
+
+      <!-- Joint 1: Waist Pan -->
+      <body name="right_shoulder_turret" pos="0 0 0.06">
+        <joint name="right_q1_waist" type="hinge" axis="0 0 1" range="-180 180" damping="0.5"/>
+        <geom name="right_turret_geom" type="box" size="0.045 0.045 0.03" material="spiderman_red"/>
+
+        <!-- Joint 2: Shoulder Lift -->
+        <body name="right_upper_arm" pos="0 0 0.04">
+          <joint name="right_q2_shoulder" type="hinge" axis="0 1 0" range="-45 135" damping="0.8"/>
+          <geom name="right_upper_link" type="capsule" fromto="0 0 0 0 0 0.22" size="0.025" material="spiderman_red"/>
+
+          <!-- Joint 3: Elbow Flex -->
+          <body name="right_forearm" pos="0 0 0.22">
+            <joint name="right_q3_elbow" type="hinge" axis="0 1 0" range="-120 90" damping="0.6"/>
+            <geom name="right_forearm_link" type="capsule" fromto="0 0 0 0 0 0.22" size="0.022" material="spiderman_navy"/>
+
+            <!-- Joint 4: Wrist Pitch -->
+            <body name="right_wrist_pitch" pos="0 0 0.20">
+              <joint name="right_q4_wrist_pitch" type="hinge" axis="0 1 0" range="-90 90" damping="0.3"/>
+              <geom name="right_wrist_box" type="box" size="0.025 0.025 0.02" material="metallic_black"/>
+
+              <!-- Joint 5: Wrist Roll -->
+              <body name="right_wrist_roll" pos="0 0 0.03">
+                <joint name="right_q5_wrist_roll" type="hinge" axis="0 0 1" range="-180 180" damping="0.2"/>
+                <geom name="right_gripper_palm" type="box" size="0.04 0.025 0.02" material="spiderman_red"/>
+
+                <!-- Right Parallel Gripper Fingers -->
+                <body name="right_gripper_finger_l" pos="-0.025 0 0.03">
+                  <joint name="right_gripper_slide_l" type="slide" axis="1 0 0" range="-0.025 0" damping="0.1"/>
+                  <geom name="right_finger_geom_l" type="box" size="0.006 0.015 0.035" material="gripper_rubber"/>
+                </body>
+                <body name="right_gripper_finger_r" pos="0.025 0 0.03">
+                  <joint name="right_gripper_slide_r" type="slide" axis="-1 0 0" range="-0.025 0" damping="0.1"/>
+                  <geom name="right_finger_geom_r" type="box" size="0.006 0.015 0.035" material="gripper_rubber"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+
+    <!-- ============================================================= -->
+    <!-- DINNER TABLEWARE ASSETS (Plates, Bowls, Cups, Spoons, Cube)   -->
+    <!-- ============================================================= -->
+    <!-- Ceramic Dinner Plate -->
+    <body name="obj_dinner_plate_1" pos="-0.20 0.05 0.76">
+      <freejoint/>
+      <geom name="plate_base_geom" type="cylinder" size="0.095 0.005" material="ceramic_white" mass="0.22"/>
+      <geom name="plate_rim_geom" type="cylinder" size="0.130 0.006" pos="0 0 0.006" material="ceramic_white" mass="0.26"/>
+    </body>
+
+    <!-- Ceramic Soup Bowl -->
+    <body name="obj_dinner_bowl_1" pos="-0.20 0.05 0.78">
+      <freejoint/>
+      <geom name="bowl_geom" type="cylinder" size="0.082 0.034" material="ceramic_white" mass="0.32"/>
+    </body>
+
+    <!-- Ceramic Cup -->
+    <body name="obj_ceramic_cup_1" pos="0.20 0.12 0.79">
+      <freejoint/>
+      <geom name="cup_geom" type="cylinder" size="0.040 0.055" material="ceramic_white" mass="0.26"/>
+    </body>
+
+    <!-- Stainless Spoon -->
+    <body name="obj_dining_spoon_1" pos="0.32 0.02 0.76">
+      <freejoint/>
+      <geom name="spoon_handle_geom" type="box" size="0.008 0.07 0.002" material="stainless_steel" mass="0.035"/>
+      <geom name="spoon_bowl_geom" type="cylinder" size="0.022 0.003" pos="0 0.075 0.002" material="stainless_steel" mass="0.017"/>
+    </body>
+
+    <!-- Transparent Drinking Glass -->
+    <body name="obj_drinking_glass_1" pos="-0.10 0.18 0.79">
+      <freejoint/>
+      <geom name="glass_geom" type="cylinder" size="0.036 0.065" material="clear_glass" mass="0.21"/>
+    </body>
+
+    <!-- Transparent Water Pitcher Jug -->
+    <body name="obj_water_jug_1" pos="0.35 0.22 0.84">
+      <freejoint/>
+      <geom name="jug_body_geom" type="cylinder" size="0.067 0.110" material="clear_glass" mass="0.48"/>
+      <geom name="jug_handle_geom" type="box" size="0.012 0.010 0.060" pos="0.08 0 0" material="spiderman_navy" mass="0.08"/>
+    </body>
+
+    <!-- 30mm Precision Manipulation Benchmark Cube -->
+    <body name="obj_manipulation_cube" pos="0.0 0.0 0.77">
+      <freejoint/>
+      <geom name="cube_benchmark_geom" type="box" size="0.015 0.015 0.015" material="safety_orange" mass="0.032" friction="1.4 0.08 0.005"/>
+    </body>
+
+  </worldbody>
+
+  <!-- Actuators for Dual SO-101 Robotic Arms -->
+  <actuator>
+    <!-- Left Arm Servos -->
+    <position name="act_left_q1" joint="left_q1_waist" kp="80" kv="12" ctrlrange="-180 180"/>
+    <position name="act_left_q2" joint="left_q2_shoulder" kp="120" kv="18" ctrlrange="-45 135"/>
+    <position name="act_left_q3" joint="left_q3_elbow" kp="100" kv="15" ctrlrange="-120 90"/>
+    <position name="act_left_q4" joint="left_q4_wrist_pitch" kp="50" kv="8" ctrlrange="-90 90"/>
+    <position name="act_left_q5" joint="left_q5_wrist_roll" kp="40" kv="5" ctrlrange="-180 180"/>
+    <position name="act_left_gripper" joint="left_gripper_slide_l" kp="200" kv="10" ctrlrange="-0.025 0"/>
+
+    <!-- Right Arm Servos -->
+    <position name="act_right_q1" joint="right_q1_waist" kp="80" kv="12" ctrlrange="-180 180"/>
+    <position name="act_right_q2" joint="right_q2_shoulder" kp="120" kv="18" ctrlrange="-45 135"/>
+    <position name="act_right_q3" joint="right_q3_elbow" kp="100" kv="15" ctrlrange="-120 90"/>
+    <position name="act_right_q4" joint="right_q4_wrist_pitch" kp="50" kv="8" ctrlrange="-90 90"/>
+    <position name="act_right_q5" joint="right_q5_wrist_roll" kp="40" kv="5" ctrlrange="-180 180"/>
+    <position name="act_right_gripper" joint="right_gripper_slide_l" kp="200" kv="10" ctrlrange="-0.025 0"/>
+  </actuator>
+</mujoco>

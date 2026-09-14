@@ -1,0 +1,6 @@
+{
+  "name": "TwinHands-AI",
+  "description": "Adaptive Multimodal Physical AI for Coordinated Bimanual Dinner-Table Preparation using Dual SO-101 Robotic Arms, MuJoCo Simulation, and Intel OpenVINO.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
