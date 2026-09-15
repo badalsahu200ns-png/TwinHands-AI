@@ -2,7 +2,16 @@
  * TwinHands-AI: Physical AI & Bimanual Robotics Type Definitions
  */
 
-export type TablewareType = 'plate' | 'bowl' | 'cup' | 'spoon' | 'additional_spoon';
+export type TablewareType = 'plate' | 'bowl' | 'cup' | 'spoon' | 'additional_spoon' | 'fork' | 'knife' | 'glass' | 'drinking_glass' | 'napkin';
+
+export interface RobotPetTelemetry {
+  status: 'ONLINE' | 'OFFLINE';
+  activity: 'WALKING' | 'SCANNING' | 'IDLE';
+  batteryPct: number;
+  location: string;
+  mode: 'PATROL' | 'IDLE';
+  targetFocus: string;
+}
 
 export type ArmIdentity = 'left' | 'right';
 

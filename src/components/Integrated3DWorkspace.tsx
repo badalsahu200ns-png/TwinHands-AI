@@ -29,16 +29,17 @@ import React, { useState } from 'react';
 import { 
   Play, Pause, SkipForward, RotateCcw, Mic, MicOff, Send, 
   CheckCircle2, AlertTriangle, Shield, Cpu, Gauge, Eye, Camera, 
-  Sparkles, Layers, Sliders, ChevronRight, Activity, Zap, Check
+  Sparkles, Layers, Sliders, ChevronRight, Activity, Zap, Check, Bot
 } from 'lucide-react';
 import { 
   TableLayoutPlan, 
   SO101ArmTelemetry, 
   TablewareItem, 
   PipelineStage, 
-  OpenVINOBenchmark 
+  OpenVINOBenchmark,
+  RobotPetTelemetry 
 } from '../types';
-import { ThreeWorkspace3D, CameraPreset } from './ThreeWorkspace3D';
+import { ThreeWorkspace3D, CameraPreset, LightingPreset } from './ThreeWorkspace3D';
 
 interface Integrated3DWorkspaceProps {
   plan: TableLayoutPlan | null;
@@ -87,17 +88,32 @@ export const Integrated3DWorkspace: React.FC<Integrated3DWorkspaceProps> = ({
 }) => {
   const [inputText, setInputText] = useState('');
   const [selectedArm, setSelectedArm] = useState<'left' | 'right' | null>('left');
-  const [cameraPreset, setCameraPreset] = useState<CameraPreset>('ORBIT');
+  const [cameraPreset, setCameraPreset] = useState<CameraPreset>('CINEMATIC');
+  const [lightingPreset, setLightingPreset] = useState<LightingPreset>('CINEMATIC');
   const [isListening, setIsListening] = useState(false);
+  const [petActive, setPetActive] = useState<boolean>(true);
+  const [petMode, setPetMode] = useState<'PATROL' | 'IDLE'>('PATROL');
+  const [petTelemetry, setPetTelemetry] = useState<RobotPetTelemetry | null>({
+    status: 'ONLINE',
+    activity: 'WALKING',
+    batteryPct: 96,
+    location: 'Perimeter West Waypoint',
+    mode: 'PATROL',
+    targetFocus: 'Centerpiece candle & SO-101 dual arms',
+  });
 
-  // Quick Command Presets (Supported Dinner Configurations)
+  // Quick Command Presets (Spider-Man Restaurant Automation Tasks)
   const quickPresets = [
-    { label: 'Single Place', cmd: 'Set the dinner table for 1 person' },
-    { label: 'Dinner for 2', cmd: 'Prepare a romantic dinner table for two' },
-    { label: 'Dinner for 4', cmd: 'Prepare the dinner table for 4 people' },
-    { label: 'Dinner for 6', cmd: 'Prepare the dinner table for 6 people' },
-    { label: 'Banquet for 8', cmd: 'Prepare a banquet dinner table for 8' },
-    { label: 'Dinner for 10', cmd: 'Prepare the dinner table for 10 people' },
+    { label: 'Dinner for 2', cmd: 'Prepare dinner for 2' },
+    { label: 'Dinner for 4', cmd: 'Prepare dinner for 4' },
+    { label: 'Dinner for 6', cmd: 'Prepare dinner for 6' },
+    { label: 'Banquet for 8', cmd: 'Prepare banquet for 8' },
+    { label: 'Dinner for 10', cmd: 'Prepare dinner for 10' },
+    { label: 'Prepare Table', cmd: 'Prepare the dinner table' },
+    { label: 'Arrange Plates', cmd: 'Arrange all plates' },
+    { label: 'Fill Glasses', cmd: 'Fill glasses' },
+    { label: 'Place Cutlery', cmd: 'Place cutlery' },
+    { label: 'Reset Table', cmd: 'Reset table' },
   ];
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -264,12 +280,12 @@ export const Integrated3DWorkspace: React.FC<Integrated3DWorkspaceProps> = ({
             {/* Radio-style configuration options */}
             <div className="grid grid-cols-2 gap-1.5 pt-0.5">
               {[
-                { count: 1, label: 'Single Place', desc: '1 Place · 5 Items' },
-                { count: 2, label: 'Dinner for 2', desc: '2 Places · 10 Items' },
-                { count: 4, label: 'Dinner for 4', desc: '4 Places · 20 Items' },
-                { count: 6, label: 'Dinner for 6', desc: '6 Places · 30 Items' },
-                { count: 8, label: 'Banquet for 8', desc: '8 Places · 40 Items' },
-                { count: 10, label: 'Dinner for 10', desc: '10 Places · 50 Items' },
+                { count: 1, label: 'Single Place', desc: '1 Guest · 1 Chair · 5 Items' },
+                { count: 2, label: 'Dinner for 2', desc: '2 Guests · 2 Chairs · 10 Items' },
+                { count: 4, label: 'Dinner for 4', desc: '4 Guests · 4 Chairs · 20 Items' },
+                { count: 6, label: 'Dinner for 6', desc: '6 Guests · 6 Chairs · 30 Items' },
+                { count: 8, label: 'Banquet for 8', desc: '8 Guests · 8 Chairs · 40 Items' },
+                { count: 10, label: 'Dinner for 10', desc: '10 Guests · 10 Chairs · 50 Items' },
               ].map(cfg => {
                 const isSelected = people === cfg.count;
                 return (
@@ -278,7 +294,7 @@ export const Integrated3DWorkspace: React.FC<Integrated3DWorkspaceProps> = ({
                     onClick={() => onSelectGroupSize(cfg.count)}
                     className={`flex items-start gap-1.5 p-2 rounded-lg text-left transition-all border ${
                       isSelected
-                        ? 'bg-cyan-950/70 border-cyan-500/80 text-cyan-200 shadow-sm shadow-cyan-950/50'
+                        ? 'bg-gradient-to-r from-red-950/70 to-blue-950/70 border-cyan-400 text-cyan-200 shadow-md shadow-cyan-950/50 ring-1 ring-cyan-500/50'
                         : 'bg-slate-950/60 border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200'
                     }`}
                   >
@@ -289,7 +305,7 @@ export const Integrated3DWorkspace: React.FC<Integrated3DWorkspaceProps> = ({
                       <div className={`text-[11px] font-bold font-mono truncate ${isSelected ? 'text-white' : 'text-slate-300'}`}>
                         {cfg.label}
                       </div>
-                      <div className="text-[9px] font-mono text-slate-500 truncate">
+                      <div className="text-[9px] font-mono text-slate-400 truncate">
                         {cfg.desc}
                       </div>
                     </div>
@@ -297,6 +313,66 @@ export const Integrated3DWorkspace: React.FC<Integrated3DWorkspaceProps> = ({
                 );
               })}
             </div>
+          </div>
+
+          {/* AUTONOMOUS ROBOT COMPANION CONTROLLER */}
+          <div className="bg-slate-900/90 rounded-xl p-3 border border-slate-800/80 shadow-lg space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-400 font-mono">
+                <Bot className="w-3.5 h-3.5" />
+                <span>ROBOT PET COMPANION</span>
+              </div>
+              <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
+                petActive 
+                  ? petMode === 'PATROL' 
+                    ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800/60 animate-pulse'
+                    : 'bg-amber-950/80 text-amber-400 border-amber-800/60'
+                  : 'bg-slate-950 text-slate-500 border-slate-800'
+              }`}>
+                {petActive ? (petMode === 'PATROL' ? '● PATROLLING' : '● INSPECTING') : '○ STANDBY'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+              <button
+                onClick={() => setPetActive(!petActive)}
+                className={`px-2 py-1.5 rounded-lg text-[10px] font-mono font-bold transition-all border flex items-center justify-center gap-1 ${
+                  petActive
+                    ? 'bg-emerald-950/70 border-emerald-500/70 text-emerald-300 shadow-sm shadow-emerald-950/50'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                <span>PWR:</span>
+                <span className={petActive ? 'text-emerald-400' : 'text-slate-500'}>
+                  {petActive ? 'ONLINE' : 'OFF'}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setPetMode(petMode === 'PATROL' ? 'IDLE' : 'PATROL')}
+                disabled={!petActive}
+                className={`px-2 py-1.5 rounded-lg text-[10px] font-mono font-bold transition-all border flex items-center justify-center gap-1 disabled:opacity-40 ${
+                  petMode === 'PATROL'
+                    ? 'bg-cyan-950/70 border-cyan-500/70 text-cyan-300 shadow-sm shadow-cyan-950/50'
+                    : 'bg-amber-950/70 border-amber-500/70 text-amber-300 shadow-sm shadow-amber-950/50'
+                }`}
+              >
+                <span>MODE:</span>
+                <span>{petMode}</span>
+              </button>
+            </div>
+
+            <button
+              onClick={() => setCameraPreset('PET_CAM')}
+              className={`w-full py-1.5 px-2 rounded-lg text-[10px] font-mono font-bold transition-all border flex items-center justify-center gap-1.5 ${
+                cameraPreset === 'PET_CAM'
+                  ? 'bg-gradient-to-r from-rose-600 to-blue-600 text-white border-cyan-400 shadow-md shadow-rose-600/30'
+                  : 'bg-slate-950/80 border-slate-800 hover:border-cyan-700/60 text-cyan-400 hover:text-cyan-200'
+              }`}
+            >
+              <Camera className="w-3 h-3" />
+              <span>FOLLOW PET CAM POV</span>
+            </button>
           </div>
 
           {/* AI Command & Voice Card */}
@@ -563,6 +639,67 @@ export const Integrated3DWorkspace: React.FC<Integrated3DWorkspaceProps> = ({
 
         {/* CENTER PANE: FULL-SCREEN INTERACTIVE 3D TABLE WORKSPACE */}
         <div className="flex-1 h-full relative bg-[#080c14]">
+          {/* Floating Camera & Lighting Rig HUD */}
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 bg-slate-950/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-800/80 shadow-2xl flex items-center gap-1.5 overflow-x-auto max-w-[95%]">
+            {/* Camera Presets */}
+            <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400 pr-1 border-r border-slate-800 mr-0.5 hidden sm:flex">
+              <Eye className="w-3 h-3 text-cyan-400" />
+              <span>CAM:</span>
+            </div>
+            {(
+              [
+                { id: 'CINEMATIC', label: 'Cinematic' },
+                { id: 'TABLE_VIEW', label: 'Table' },
+                { id: 'ROBOT_VIEW', label: 'Dual Arms' },
+                { id: 'DINNER_VIEW', label: 'Dinner' },
+                { id: 'INSPECTOR', label: 'Top' },
+                { id: 'PET_CAM', label: 'Pet Cam 🐾' },
+                { id: 'ORBIT', label: 'Free Orbit' },
+              ] as const
+            ).map(cam => (
+              <button
+                key={cam.id}
+                onClick={() => setCameraPreset(cam.id)}
+                className={`px-2 py-0.5 rounded-lg text-[11px] font-mono font-semibold transition-all whitespace-nowrap ${
+                  cameraPreset === cam.id
+                    ? 'bg-gradient-to-r from-rose-600 to-blue-600 text-white shadow-md shadow-rose-600/20 font-bold'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                {cam.label}
+              </button>
+            ))}
+
+            <div className="h-4 w-px bg-slate-700/80 mx-1 hidden md:block" />
+
+            {/* Lighting Rig Presets */}
+            <div className="flex items-center gap-1 text-[10px] font-mono text-amber-400 pr-1 border-r border-slate-800 mr-0.5 hidden md:flex">
+              <Sparkles className="w-3 h-3 text-amber-400" />
+              <span>LIGHT:</span>
+            </div>
+            {(
+              [
+                { id: 'CINEMATIC', label: '🎬 Cinematic', tip: 'Spider-Man warm dining + neon rims' },
+                { id: 'RESTAURANT', label: '🍷 Restaurant', tip: 'Warm intimate dining ambience' },
+                { id: 'ROBOT_LAB', label: '🤖 Robot Lab', tip: 'High-visibility technical studio' },
+                { id: 'SPIDER_NIGHT', label: '🕷️ Spider Night', tip: 'Dramatic high-contrast superhero noir' },
+              ] as const
+            ).map(preset => (
+              <button
+                key={preset.id}
+                onClick={() => setLightingPreset(preset.id)}
+                title={preset.tip}
+                className={`px-2 py-0.5 rounded-lg text-[11px] font-mono font-semibold transition-all whitespace-nowrap ${
+                  lightingPreset === preset.id
+                    ? 'bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-md shadow-amber-500/20 font-bold'
+                    : 'text-slate-400 hover:text-amber-200 hover:bg-slate-800/60'
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
           <ThreeWorkspace3D
             plan={plan}
             leftArm={leftArm}
@@ -575,6 +712,10 @@ export const Integrated3DWorkspace: React.FC<Integrated3DWorkspaceProps> = ({
             onSelectArm={setSelectedArm}
             cameraPreset={cameraPreset}
             onCameraPresetChange={setCameraPreset}
+            petActive={petActive}
+            petMode={petMode}
+            onPetTelemetryChange={setPetTelemetry}
+            lightingPreset={lightingPreset}
           />
         </div>
 
@@ -693,6 +834,57 @@ export const Integrated3DWorkspace: React.FC<Integrated3DWorkspaceProps> = ({
               <span className={(rightArm.gripperState || 0) > 0.5 ? 'text-blue-400 font-bold' : 'text-slate-300'}>
                 {(rightArm.gripperState || 0) > 0.5 ? 'GRASPING (100%)' : 'OPEN'}
               </span>
+            </div>
+          </div>
+
+          {/* AUTONOMOUS ROBOT COMPANION TELEMETRY (Section 15) */}
+          <div className="bg-slate-900/90 rounded-xl p-3 border border-slate-800/80 shadow-lg space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-400 font-mono">
+                <Bot className="w-3.5 h-3.5" />
+                <span>ROBOT PET TELEMETRY</span>
+              </div>
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
+                petTelemetry?.status === 'ONLINE'
+                  ? petTelemetry.activity === 'WALKING'
+                    ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800/50'
+                    : 'bg-amber-950/80 text-amber-400 border-amber-800/50'
+                  : 'bg-slate-950 text-slate-500 border-slate-800'
+              }`}>
+                {petTelemetry?.status === 'ONLINE' ? `● ${petTelemetry.activity}` : '○ STANDBY'}
+              </span>
+            </div>
+
+            {/* Battery state */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[10px] font-mono">
+                <span className="text-slate-400">Battery Status</span>
+                <span className="text-emerald-400 font-bold">{petTelemetry?.batteryPct || 96}%</span>
+              </div>
+              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-emerald-500 to-cyan-400 rounded-full transition-all duration-300"
+                  style={{ width: `${petTelemetry?.batteryPct || 96}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Activity & Target */}
+            <div className="space-y-1.5 text-[10px] font-mono pt-1">
+              <div className="bg-slate-950 p-1.5 rounded border border-slate-800/80">
+                <span className="text-slate-500 block text-[9px]">ACTIVITY:</span>
+                <span className="text-slate-200 font-semibold">{petTelemetry?.activity === 'WALKING' ? 'Patrolling perimeter' : petTelemetry?.activity === 'SCANNING' ? 'Inspecting restaurant area' : 'Stationary Standby'}</span>
+              </div>
+              <div className="bg-slate-950 p-1.5 rounded border border-slate-800/80">
+                <span className="text-slate-500 block text-[9px]">TARGET FOCUS:</span>
+                <span className="text-cyan-300 font-semibold">{petTelemetry?.targetFocus || 'Centerpiece candle'}</span>
+              </div>
+              <div className="flex items-center justify-between bg-slate-950 p-1.5 rounded border border-slate-800/80">
+                <span className="text-slate-500 text-[9px]">LOCATION:</span>
+                <span className="text-slate-300">
+                  {petTelemetry?.location || 'Dining Perimeter'}
+                </span>
+              </div>
             </div>
           </div>
 

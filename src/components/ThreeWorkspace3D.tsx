@@ -1,15 +1,17 @@
 /**
  * TwinHands-AI: Photorealistic Interactive 3D Simulation Workspace
- * Built with Three.js for real-time bimanual robotic manipulation.
+ * Built with Three.js for real-time bimanual robotic manipulation in a Spider-Man themed restaurant.
  * 
  * Features:
- * - Real-time animated dual SO-101 robotic arms (🔴 Red Left & 🔵 Blue Right)
- * - Articulated links (J1-J5) and parallel gripper finger mechanics
- * - Complete tableware collection (plates, bowls, cups, spoons, glasses, water jug, benchmark cube)
- * - Click/select arm or joints with emissive highlight
- * - Drag/click table to command target end-effector coordinates
- * - Camera modes: ORBIT, TOP, FRONT, LEFT, RIGHT, ROBOT POV, TASK POV
- * - Shadows, ambient occlusion, PBR materials, and coordinate grids
+ * - Spider-Man inspired futuristic luxury restaurant environment (hardwood floor, slatted acoustic walls, red/blue neon coves, framed art, planters, ceiling downlights)
+ * - Real-time animated dual SO-101 robotic arms (🔴 Red Left & 🔵 Blue Right) with articulated links (J1-J5) and parallel gripper finger mechanics
+ * - Large centerpiece candle on dining table with realistic 3D flame and warm dynamic flickering PointLight casting soft shadows
+ * - Dynamic restaurant dining table (dark walnut finish, rounded beveled edges, metal/wood legs) scaling to guest count
+ * - Dynamic dining chairs automatically matching guest count (1, 2, 4, 6, 8, 10) positioned collision-free around the table
+ * - Full restaurant place settings: dinner plates with coordinated red/blue/platinum rims, soup bowls, transparent glasses (90% water level + meniscus), cups, metallic cutlery (fork, knife, spoon), folded cloth napkins
+ * - Spider-Man themed water pitcher jug with 90% water level and chrome spider insignia
+ * - Autonomous quadruped robot companion pet with true alternating gait walk cycle, vertical body bob, obstacle-free restaurant waypoint patrol, idle inspection behaviors (looking at candle & SO-101 arms)
+ * - Camera modes: CINEMATIC, TABLE_VIEW, ROBOT_VIEW, DINNER_VIEW, INSPECTOR, PET_CAM, and ORBIT
  */
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
@@ -17,11 +19,43 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { 
   Camera, Eye, Layers, Crosshair, Sparkles, Sliders, Maximize2, 
-  RotateCcw, Compass, CheckCircle2, AlertTriangle, Shield, Info, Move
+  RotateCcw, Compass, CheckCircle2, AlertTriangle, Shield, Info, Move,
+  Bot, Flame
 } from 'lucide-react';
-import { TableLayoutPlan, SO101ArmTelemetry, TablewareItem } from '../types';
+import { TableLayoutPlan, SO101ArmTelemetry, TablewareItem, RobotPetTelemetry } from '../types';
+import { generatePlaceSettingCenters } from '../planner/table_layout_planner';
+import {
+  createRestaurantRoom,
+  createDiningChair,
+  createDinnerFork,
+  createDinnerKnife,
+  createFoldedNapkin,
+  createRobotPet,
+  createInitialPetState,
+  updateRobotPetKinematics,
+  RobotPetHierarchy,
+  RobotPetState,
+  RestaurantLightingRig,
+  LightingPreset,
+  applyLightingPreset,
+} from './ThreeRestaurantAssets';
 
-export type CameraPreset = 'ORBIT' | 'TOP' | 'FRONT' | 'LEFT' | 'RIGHT' | 'ROBOT_POV' | 'TASK_POV';
+export type { LightingPreset };
+
+export type CameraPreset = 
+  | 'CINEMATIC' 
+  | 'TABLE_VIEW' 
+  | 'ROBOT_VIEW' 
+  | 'DINNER_VIEW' 
+  | 'INSPECTOR' 
+  | 'PET_CAM' 
+  | 'ORBIT' 
+  | 'TOP' 
+  | 'FRONT' 
+  | 'LEFT' 
+  | 'RIGHT' 
+  | 'ROBOT_POV' 
+  | 'TASK_POV';
 
 interface ThreeWorkspace3DProps {
   plan: TableLayoutPlan | null;
@@ -39,17 +73,14 @@ interface ThreeWorkspace3DProps {
   showReachRings?: boolean;
   showTrajectories?: boolean;
   showOpenVinoHUD?: boolean;
+  petActive?: boolean;
+  petMode?: 'PATROL' | 'IDLE';
+  onPetTelemetryChange?: (telemetry: RobotPetTelemetry) => void;
+  lightingPreset?: LightingPreset;
 }
 
 /**
- * Generates an ultra-crisp, procedural Spider-Man inspired texture for the water jug.
- * Features:
- * - Deep Spider-Man crimson background (#c8102e / #991b1b) with subtle gradient lighting
- * - Fine-pitch carbon tech micro-grid
- * - Black spider-web radiating spokes from front and rear nodes
- * - Scalloped catenary curves forming concentric webs
- * - Stylized metallic geometric spider emblem on the front chest
- * - Royal blue tech accent bands at top and bottom edges with black pin-stripes
+ * Generates an ultra-crisp procedural Spider-Man inspired texture for the water jug.
  */
 let cachedSpiderWebTexture: THREE.CanvasTexture | null = null;
 function getSpiderWebTexture(): THREE.CanvasTexture {
@@ -70,13 +101,13 @@ function getSpiderWebTexture(): THREE.CanvasTexture {
   const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
   bgGrad.addColorStop(0.0, '#7f1d1d');
   bgGrad.addColorStop(0.2, '#991b1b');
-  bgGrad.addColorStop(0.5, '#c8102e'); // Deep Spider-Man red
+  bgGrad.addColorStop(0.5, '#c8102e');
   bgGrad.addColorStop(0.8, '#991b1b');
   bgGrad.addColorStop(1.0, '#7f1d1d');
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, w, h);
 
-  // 2. High-tech micro-weave / carbon grid
+  // 2. High-tech micro-weave carbon grid
   ctx.fillStyle = 'rgba(0, 0, 0, 0.09)';
   for (let y = 0; y < h; y += 6) {
     for (let x = 0; x < w; x += 6) {
@@ -86,14 +117,14 @@ function getSpiderWebTexture(): THREE.CanvasTexture {
     }
   }
 
-  // 3. Web Nodes: Front center (u = 0.50), Left quadrant (u = 0.25), Right quadrant (u = 0.75)
+  // 3. Web Nodes
   const webCenters = [
     { x: w * 0.25, y: h * 0.50, isMain: false },
-    { x: w * 0.50, y: h * 0.48, isMain: true }, // Front chest center
+    { x: w * 0.50, y: h * 0.48, isMain: true },
     { x: w * 0.75, y: h * 0.50, isMain: false },
   ];
 
-  ctx.strokeStyle = '#0a0e17'; // Rich deep black web lines
+  ctx.strokeStyle = '#0a0e17';
   ctx.lineWidth = 2.4;
   ctx.lineCap = 'round';
 
@@ -102,7 +133,6 @@ function getSpiderWebTexture(): THREE.CanvasTexture {
     const maxRadius = 380;
     const spokes: { x: number; y: number; angle: number }[] = [];
 
-    // Radiating spokes
     for (let i = 0; i < spokesCount; i++) {
       const angle = (i / spokesCount) * Math.PI * 2;
       const cos = Math.cos(angle);
@@ -115,7 +145,6 @@ function getSpiderWebTexture(): THREE.CanvasTexture {
       ctx.stroke();
     }
 
-    // Concentric web arches (scalloped catenary curves)
     const radii = [24, 52, 86, 126, 172, 224, 280, 342];
     radii.forEach((r) => {
       ctx.beginPath();
@@ -126,7 +155,6 @@ function getSpiderWebTexture(): THREE.CanvasTexture {
         const x2 = wc.x + spokes[next].x * r;
         const y2 = wc.y + spokes[next].y * r;
 
-        // Inward catenary sag towards web center
         const midX = (x1 + x2) / 2;
         const midY = (y1 + y2) / 2;
         const pull = 0.82;
@@ -139,12 +167,10 @@ function getSpiderWebTexture(): THREE.CanvasTexture {
       ctx.stroke();
     });
 
-    // Front Chest Stylized Spider Insignia
+    // Stylized Spider Insignia on chest
     if (wc.isMain) {
       ctx.save();
       ctx.translate(wc.x, wc.y);
-
-      // Black background shadow/casing
       ctx.fillStyle = '#05070c';
       ctx.beginPath();
       ctx.moveTo(0, -22);
@@ -158,7 +184,6 @@ function getSpiderWebTexture(): THREE.CanvasTexture {
       ctx.closePath();
       ctx.fill();
 
-      // Metallic chrome / silver core
       ctx.fillStyle = '#e2e8f0';
       ctx.beginPath();
       ctx.moveTo(0, -18);
@@ -171,44 +196,14 @@ function getSpiderWebTexture(): THREE.CanvasTexture {
       ctx.lineTo(-6, -8);
       ctx.closePath();
       ctx.fill();
-
-      // Sharp stylized geometric spider legs (4 on each side)
-      ctx.strokeStyle = '#05070c';
-      ctx.lineWidth = 3.6;
-      ctx.lineJoin = 'miter';
-      const legPaths = [
-        // Upward pairs
-        [ [6, -9], [22, -26], [34, -18] ],
-        [ [-6, -9], [-22, -26], [-34, -18] ],
-        [ [7, -3], [28, -12], [40, 2] ],
-        [ [-7, -3], [-28, -12], [-40, 2] ],
-        // Downward pairs
-        [ [6, 6], [26, 14], [32, 32] ],
-        [ [-6, 6], [-26, 14], [-32, 32] ],
-        [ [4, 12], [18, 26], [24, 42] ],
-        [ [-4, 12], [-18, 26], [-24, 42] ],
-      ];
-
-      legPaths.forEach(pts => {
-        ctx.beginPath();
-        ctx.moveTo(pts[0][0], pts[0][1]);
-        ctx.lineTo(pts[1][0], pts[1][1]);
-        ctx.lineTo(pts[2][0], pts[2][1]);
-        ctx.stroke();
-      });
-
       ctx.restore();
     }
   });
 
-  // 4. Dark Royal Blue & Carbon Tech Trim Bands at top and bottom edges
-  ctx.fillStyle = '#1d4ed8'; // Dark royal blue
+  // Dark Royal Blue tech trim bands
+  ctx.fillStyle = '#1d4ed8';
   ctx.fillRect(0, 0, w, 22);
   ctx.fillRect(0, h - 22, w, 22);
-
-  ctx.fillStyle = '#0f172a'; // Carbon accent divider line
-  ctx.fillRect(0, 22, w, 4);
-  ctx.fillRect(0, h - 26, w, 4);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
@@ -229,11 +224,15 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
   selectedArm,
   onSelectArm,
   onSetTargetPos,
-  cameraPreset = 'ORBIT',
+  cameraPreset = 'CINEMATIC',
   onCameraPresetChange,
   showReachRings = true,
   showTrajectories = true,
   showOpenVinoHUD = true,
+  petActive = true,
+  petMode = 'PATROL',
+  onPetTelemetryChange,
+  lightingPreset = 'CINEMATIC',
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -265,26 +264,39 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
   }>({});
 
   const tablewareGroupRef = useRef<THREE.Group | null>(null);
+  const chairsGroupRef = useRef<THREE.Group | null>(null);
   const tableElementsRef = useRef<{
     tabletop?: THREE.Mesh;
     edgeLine?: THREE.LineSegments;
     legs?: THREE.Mesh[];
   }>({});
 
+  // Center candle references for live flickering
+  const candleLightRef = useRef<THREE.PointLight | null>(null);
+  const flameMeshRef = useRef<THREE.Mesh | null>(null);
+
+  // Cinematic lighting rig and environment fill references
+  const lightingRigRef = useRef<RestaurantLightingRig | null>(null);
+  const hemiLightRef = useRef<THREE.HemisphereLight | null>(null);
+  const ambientLightRef = useRef<THREE.AmbientLight | null>(null);
+
+  // Robot pet references
+  const robotPetRef = useRef<RobotPetHierarchy | null>(null);
+  const robotPetStateRef = useRef<RobotPetState>(createInitialPetState());
+
   const [activeCamMode, setActiveCamMode] = useState<CameraPreset>(cameraPreset);
   const [tableTargetCoord, setTableTargetCoord] = useState<{ x: number; y: number; z: number } | null>(null);
   const [fps, setFps] = useState<number>(60);
 
   // Camera preset destinations
-  const targetCamPos = useRef<THREE.Vector3>(new THREE.Vector3(0, 1.8, 1.9));
-  const targetCamLook = useRef<THREE.Vector3>(new THREE.Vector3(0, 0.75, 0));
+  const targetCamPos = useRef<THREE.Vector3>(new THREE.Vector3(0, 1.9, 2.6));
+  const targetCamLook = useRef<THREE.Vector3>(new THREE.Vector3(0, 0.72, 0));
 
   // Initialize Three.js Scene
   useEffect(() => {
     const container = mountRef.current;
     if (!container) return;
 
-    // Robust width & height resolution (prevent zero-dimension failure)
     let width = container.clientWidth;
     let height = container.clientHeight;
     if (!width || !height || width < 100 || height < 100) {
@@ -296,12 +308,22 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
     // 1. Scene
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    scene.background = new THREE.Color(0x080c14);
-    scene.fog = new THREE.FogExp2(0x080c14, 0.12);
+    scene.background = new THREE.Color(0x0b1220);
+    scene.fog = new THREE.Fog(0x0b1220, 7.5, 24.0);
+
+    // 1b. Layered Environmental Ambient & Fill Lighting
+    const hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x1c1917, 0.55);
+    hemiLight.position.set(0, 10, 0);
+    scene.add(hemiLight);
+    hemiLightRef.current = hemiLight;
+
+    const ambientLight = new THREE.AmbientLight(0x1e293b, 0.35);
+    scene.add(ambientLight);
+    ambientLightRef.current = ambientLight;
 
     // 2. Camera
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.05, 50);
-    camera.position.set(0, 1.8, 1.9);
+    camera.position.set(0, 1.9, 2.6);
     cameraRef.current = camera;
 
     // 3. Renderer
@@ -311,78 +333,56 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
+    renderer.toneMappingExposure = 1.25;
     rendererRef.current = renderer;
 
     container.replaceChildren(renderer.domElement);
 
-    // 4. Controls
+    // 4. OrbitControls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.target.set(0, 0.75, 0);
-    controls.maxPolarAngle = Math.PI / 2 - 0.02; // Don't clip beneath floor
+    controls.maxPolarAngle = Math.PI / 2 - 0.02; // Don't clip below floor
     controls.minDistance = 0.4;
-    controls.maxDistance = 4.5;
+    controls.maxDistance = 5.5;
     controlsRef.current = controls;
 
-    // 5. Lighting
-    const ambientLight = new THREE.HemisphereLight(0x94a3b8, 0x0f172a, 0.75);
-    scene.add(ambientLight);
+    // 5. Build Complete Restaurant Interior & Centerpiece Candle Lighting Rig
+    const rig = createRestaurantRoom();
+    scene.add(rig.roomGroup);
+    lightingRigRef.current = rig;
+    candleLightRef.current = rig.candleLight;
+    flameMeshRef.current = rig.flameMesh;
 
-    const mainLight = new THREE.DirectionalLight(0xffffff, 1.6);
-    mainLight.position.set(1.2, 3.2, 2.0);
-    mainLight.castShadow = true;
-    mainLight.shadow.mapSize.width = 2048;
-    mainLight.shadow.mapSize.height = 2048;
-    mainLight.shadow.camera.near = 0.5;
-    mainLight.shadow.camera.far = 10;
-    mainLight.shadow.bias = -0.0005;
-    const d = 1.6;
-    mainLight.shadow.camera.left = -d;
-    mainLight.shadow.camera.right = d;
-    mainLight.shadow.camera.top = d;
-    mainLight.shadow.camera.bottom = -d;
-    scene.add(mainLight);
+    // Apply active lighting preset immediately on load
+    applyLightingPreset(rig, hemiLight, ambientLight, lightingPreset);
 
-    const fillLight = new THREE.DirectionalLight(0x38bdf8, 0.4);
-    fillLight.position.set(-2, 2, -1.5);
-    scene.add(fillLight);
+    // 6. Chairs Group
+    const chairsGroup = new THREE.Group();
+    chairsGroup.name = 'dining_chairs_collection';
+    chairsGroupRef.current = chairsGroup;
+    scene.add(chairsGroup);
 
-    // Spot light over center workcell
-    const spot = new THREE.SpotLight(0xffffff, 1.2, 8, Math.PI / 4, 0.4, 1);
-    spot.position.set(0, 2.5, 0);
-    spot.target.position.set(0, 0.75, 0);
-    scene.add(spot);
-    scene.add(spot.target);
+    // 7. Quadruped Robot Companion Pet
+    const pet = createRobotPet();
+    scene.add(pet.rootGroup);
+    robotPetRef.current = pet;
+    robotPetStateRef.current = createInitialPetState();
 
-    // 6. Floor & Coordinate Grid
-    const floorGeo = new THREE.PlaneGeometry(10, 10);
-    const floorMat = new THREE.MeshStandardMaterial({
-      color: 0x070b12,
-      roughness: 0.85,
-      metalness: 0.2,
-    });
-    const floor = new THREE.Mesh(floorGeo, floorMat);
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    scene.add(floor);
-
-    const grid = new THREE.GridHelper(8, 32, 0x1e293b, 0x0f172a);
-    grid.position.y = 0.002;
-    scene.add(grid);
-
-    // 7. Dining Table (Scales dynamically based on plan)
+    // 8. Dining Table (Dark Walnut finish with rounded edges and brass/dark legs)
     const tableGroup = new THREE.Group();
     tableGroup.name = 'dining_table';
 
     const initDims = plan?.tableDimensions || { widthM: 1.40, depthM: 0.90, heightM: 0.75 };
     const topThick = 0.032;
     const tabletopGeo = new THREE.BoxGeometry(initDims.widthM, topThick, initDims.depthM);
+    
+    // Rich dark walnut tabletop material with warm amber tone and realistic specular sheen
     const tabletopMat = new THREE.MeshStandardMaterial({
-      color: 0x0e1420,
-      roughness: 0.4,
-      metalness: 0.6,
+      color: 0x2e1e14,
+      roughness: 0.28,
+      metalness: 0.18,
     });
     const tabletop = new THREE.Mesh(tabletopGeo, tabletopMat);
     tabletop.position.set(0, 0.75 - topThick / 2, 0);
@@ -390,18 +390,18 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
     tabletop.receiveShadow = true;
     tableGroup.add(tabletop);
 
-    // Tabletop border outline
+    // Beveled gold/brass accent edge outline
     const edgeGeo = new THREE.EdgesGeometry(tabletopGeo);
-    const edgeMat = new THREE.LineBasicMaterial({ color: 0x1e293b, linewidth: 1 });
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0xd4af37, linewidth: 1.5 });
     const edgeLine = new THREE.LineSegments(edgeGeo, edgeMat);
     edgeLine.position.copy(tabletop.position);
     tableGroup.add(edgeLine);
 
-    // Four Legs
-    const legGeo = new THREE.CylinderGeometry(0.024, 0.024, 0.734, 16);
+    // Four Elegant Tapered Walnut/Brass Table Legs
+    const legGeo = new THREE.CylinderGeometry(0.026, 0.020, 0.734, 16);
     const legMat = new THREE.MeshStandardMaterial({
-      color: 0x111827,
-      metalness: 0.8,
+      color: 0x0f172a,
+      metalness: 0.7,
       roughness: 0.3,
     });
     const legX = initDims.widthM / 2 - 0.06;
@@ -417,6 +417,7 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
       const leg = new THREE.Mesh(legGeo, legMat);
       leg.position.set(...pos);
       leg.castShadow = true;
+      leg.receiveShadow = true;
       tableGroup.add(leg);
       legMeshes.push(leg);
     });
@@ -429,35 +430,34 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
 
     scene.add(tableGroup);
 
-    // 8. Build Articulated Dual SO-101 Arms
+    // 9. Build Articulated Dual SO-101 Arms
     const createSO101Arm = (isLeft: boolean) => {
       const armGroup = new THREE.Group();
       armGroup.name = isLeft ? 'left_arm' : 'right_arm';
 
-      // Base coordinates: [-0.38, 0.75, 0.42] or [0.38, 0.75, 0.42]
       const basePos = new THREE.Vector3(isLeft ? -0.38 : 0.38, 0.75, 0.42);
       armGroup.position.copy(basePos);
 
-      const primaryColor = isLeft ? 0xdc2626 : 0x2563eb; // 🔴 Red Left / 🔵 Blue Right
-      const secondaryColor = isLeft ? 0x1e3a8a : 0xb91c1c; // Spider-Man contrast
-      const metallicBlack = 0x111827;
+      const primaryColor = isLeft ? 0xdc2626 : 0x2563eb; // 🔴 Spider-Red Left / 🔵 Electric-Blue Right
+      const secondaryColor = isLeft ? 0x1e3a8a : 0x991b1b;
+      const metallicBlack = 0x090d16;
 
       const armMat = new THREE.MeshStandardMaterial({
         color: primaryColor,
-        roughness: 0.35,
-        metalness: 0.5,
+        roughness: 0.3,
+        metalness: 0.65,
       });
 
       const darkMat = new THREE.MeshStandardMaterial({
         color: secondaryColor,
-        roughness: 0.4,
-        metalness: 0.6,
+        roughness: 0.35,
+        metalness: 0.7,
       });
 
       const jointMat = new THREE.MeshStandardMaterial({
         color: metallicBlack,
-        roughness: 0.3,
-        metalness: 0.85,
+        roughness: 0.25,
+        metalness: 0.9,
       });
 
       const rubberMat = new THREE.MeshStandardMaterial({
@@ -545,7 +545,7 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         color: primaryColor,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.7,
+        opacity: 0.8,
       });
       const targetMarker = new THREE.Mesh(targetGeo, targetMat);
       targetMarker.rotation.x = -Math.PI / 2;
@@ -559,7 +559,7 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
           color: primaryColor,
           side: THREE.DoubleSide,
           transparent: true,
-          opacity: 0.06,
+          opacity: 0.07,
         });
         const reachRing = new THREE.Mesh(reachRingGeo, reachRingMat);
         reachRing.rotation.x = -Math.PI / 2;
@@ -584,13 +584,13 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
     leftArmRefs.current = createSO101Arm(true);
     rightArmRefs.current = createSO101Arm(false);
 
-    // 9. Tableware Group
+    // 10. Tableware Collection Group
     const tablewareGroup = new THREE.Group();
     tablewareGroup.name = 'tableware_collection';
     tablewareGroupRef.current = tablewareGroup;
     scene.add(tablewareGroup);
 
-    // 10. Animation & Render Loop
+    // 11. Main Render & Kinematics Loop
     let lastTime = performance.now();
     let frameCount = 0;
     let animId: number;
@@ -598,16 +598,51 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
     const animate = () => {
       animId = requestAnimationFrame(animate);
 
-      // FPS measurement
-      frameCount++;
       const now = performance.now();
+      const deltaSec = Math.min(0.05, (now - lastTime) / 1000);
+
+      frameCount++;
       if (now - lastTime >= 1000) {
         setFps(frameCount);
         frameCount = 0;
         lastTime = now;
       }
 
-      // Smooth camera tweening to target positions
+      // Live Center Candle Flame Flicker Animation
+      if (candleLightRef.current && flameMeshRef.current) {
+        const flicker = 2.4 + Math.sin(now * 0.015) * 0.22 + (Math.random() - 0.5) * 0.08;
+        candleLightRef.current.intensity = flicker;
+        flameMeshRef.current.scale.set(
+          1.0 + Math.sin(now * 0.02) * 0.08,
+          1.0 + Math.cos(now * 0.025) * 0.12,
+          1.0
+        );
+      }
+
+      // Update Quadruped Robot Companion Pet Kinematics & Walking Cycle
+      if (robotPetRef.current) {
+        updateRobotPetKinematics(
+          robotPetRef.current,
+          robotPetStateRef.current,
+          deltaSec,
+          petActive,
+          petMode,
+          onPetTelemetryChange
+        );
+
+        // Dynamic Pet Cam Tracking
+        if (activeCamMode === 'PET_CAM') {
+          const ps = robotPetStateRef.current;
+          targetCamPos.current.set(
+            ps.pos.x - Math.sin(ps.headingRad) * 1.25,
+            0.62,
+            ps.pos.z - Math.cos(ps.headingRad) * 1.25
+          );
+          targetCamLook.current.set(ps.pos.x, 0.25, ps.pos.z);
+        }
+      }
+
+      // Smooth Camera & Controls Lerp
       camera.position.lerp(targetCamPos.current, 0.06);
       controls.target.lerp(targetCamLook.current, 0.06);
       controls.update();
@@ -617,7 +652,7 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
 
     animate();
 
-    // 11. Dynamic ResizeObserver for robust layout adaptation
+    // 12. Dynamic ResizeObserver for robust layout adaptation
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const w = entry.contentRect.width;
@@ -651,9 +686,21 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
     };
   }, []);
 
-  // Update Joint Angles in 3D Hierarchy safely
+  // Synchronize dynamic lighting presets in real time
   useEffect(() => {
-    // Left Arm Joints: [q1, q2, q3, q4, q5, gripper]
+    if (lightingRigRef.current) {
+      applyLightingPreset(
+        lightingRigRef.current,
+        hemiLightRef.current,
+        ambientLightRef.current,
+        lightingPreset
+      );
+    }
+  }, [lightingPreset]);
+
+  // Update Joint Angles in 3D Hierarchy
+  useEffect(() => {
+    // Left Arm Joints
     const l = leftArmRefs.current;
     if (l.turret && l.upper && l.forearm && l.wrist && l.palm && l.fingerL && l.fingerR && leftArm?.jointAnglesDeg) {
       l.turret.rotation.y = THREE.MathUtils.degToRad(-(leftArm.jointAnglesDeg[0] || 0));
@@ -662,13 +709,11 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
       l.wrist.rotation.x = THREE.MathUtils.degToRad(leftArm.jointAnglesDeg[3] || 0);
       l.palm.rotation.y = THREE.MathUtils.degToRad(leftArm.jointAnglesDeg[4] || 0);
 
-      // Gripper stroke (gripperState > 0.5 is grasped)
       const lGrasping = (leftArm.gripperState || 0) > 0.5;
       const lStroke = lGrasping ? 0.008 : 0.024;
       l.fingerL.position.x = -lStroke;
       l.fingerR.position.x = lStroke;
 
-      // Target marker
       if (l.targetMarker) {
         const tx = leftArm.targetPose?.x ?? leftArm.eePose?.x ?? -0.20;
         const ty = leftArm.targetPose?.y ?? leftArm.eePose?.y ?? 0.05;
@@ -676,7 +721,7 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
       }
     }
 
-    // Right Arm Joints: [q1, q2, q3, q4, q5, gripper]
+    // Right Arm Joints
     const r = rightArmRefs.current;
     if (r.turret && r.upper && r.forearm && r.wrist && r.palm && r.fingerL && r.fingerR && rightArm?.jointAnglesDeg) {
       r.turret.rotation.y = THREE.MathUtils.degToRad(-(rightArm.jointAnglesDeg[0] || 0));
@@ -735,27 +780,87 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
     });
   }, [plan?.tableDimensions]);
 
-  // Update Dynamic Tableware Objects safely
+  // Dynamic Chairs: Automatically scale & position chairs matching guest count
+  useEffect(() => {
+    const chairsGroup = chairsGroupRef.current;
+    if (!chairsGroup || !plan) return;
+
+    chairsGroup.clear();
+
+    const guests = plan.isValid ? plan.groupSize : 4;
+    const tableW = plan.tableDimensions?.widthM || 1.40;
+    const tableD = plan.tableDimensions?.depthM || 0.90;
+    const centers = generatePlaceSettingCenters(guests);
+
+    centers.forEach((seat) => {
+      // Determine accent color: Red for left, Blue for right, Platinum for center
+      const accent = seat.pos.x < -0.1 ? 0xdc2626 : seat.pos.x > 0.1 ? 0x2563eb : 0xd4af37;
+      const chair = createDiningChair(accent);
+
+      // Calculate chair position outside table perimeter facing center
+      let chairX = seat.pos.x;
+      let chairZ = -seat.pos.y;
+
+      if (seat.seat === 'north') {
+        chairX = seat.pos.x;
+        chairZ = -(tableD / 2 + 0.28);
+      } else if (seat.seat === 'south') {
+        chairX = seat.pos.x;
+        chairZ = +(tableD / 2 + 0.28);
+      } else if (seat.seat === 'east') {
+        chairX = +(tableW / 2 + 0.28);
+        chairZ = -seat.pos.y;
+      } else if (seat.seat === 'west') {
+        chairX = -(tableW / 2 + 0.28);
+        chairZ = -seat.pos.y;
+      } else {
+        // Angular / distributed seats (Dinner for 6, Banquet for 8, Dinner for 10):
+        // Project ray from table center (0,0) along (chairX, chairZ) to table perimeter
+        const absX = Math.abs(chairX);
+        const absZ = Math.abs(chairZ);
+        const scaleX = absX > 1e-4 ? (tableW / 2) / absX : Infinity;
+        const scaleZ = absZ > 1e-4 ? (tableD / 2) / absZ : Infinity;
+        const scale = Math.min(scaleX, scaleZ);
+        const edgeX = chairX * scale;
+        const edgeZ = chairZ * scale;
+        const len = Math.hypot(chairX, chairZ);
+        chairX = edgeX + (chairX / len) * 0.28;
+        chairZ = edgeZ + (chairZ / len) * 0.28;
+      }
+
+      // Universal facing direction: every chair faces toward table center (0, 0)
+      // Chair forward vector is local -Z, so rotation.y = Math.atan2(chairX, chairZ)
+      // perfectly aligns local -Z toward (-chairX, -chairZ) and backrest away from table.
+      const chairYaw = Math.atan2(chairX, chairZ);
+
+      // Position chair flush on the floor (Y = 0) with zero tilt
+      chair.position.set(chairX, 0, chairZ);
+      chair.rotation.set(0, chairYaw, 0);
+      chairsGroup.add(chair);
+    });
+  }, [plan?.groupSize, plan?.tableDimensions]);
+
+  // Update Dynamic Tableware Objects (Plates, Bowls, Cups, Cutlery, Glasses, Napkins, Jug)
   useEffect(() => {
     const group = tablewareGroupRef.current;
     if (!group) return;
 
-    // Clear old items
     group.clear();
 
+    // Standard Ceramics
     const ceramicMat = new THREE.MeshStandardMaterial({
-      color: 0xfafafa,
+      color: 0xf8fafc,
       roughness: 0.18,
       metalness: 0.08,
     });
 
     const steelMat = new THREE.MeshStandardMaterial({
-      color: 0xe2e8f0,
+      color: 0xf1f5f9,
       roughness: 0.12,
       metalness: 0.95,
     });
 
-    // High-clarity optical borosilicate glass material for drinking glasses
+    // Optical glass material
     const glassMat = new THREE.MeshPhysicalMaterial({
       color: 0xf0f9ff,
       transmission: 0.94,
@@ -763,28 +868,27 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
       transparent: true,
       roughness: 0.02,
       metalness: 0.02,
-      ior: 1.52, // Borosilicate optical glass refractive index
+      ior: 1.52,
       clearcoat: 1.0,
       clearcoatRoughness: 0.02,
       depthWrite: false,
     });
 
-    // Realistic transparent liquid water with 1.333 physical refractive index
+    // Transparent liquid water with 1.333 physical refractive index (90% capacity)
     const waterMat = new THREE.MeshPhysicalMaterial({
-      color: 0xc7ebfd,            // Subtle crystal cyan tint
-      transmission: 0.94,         // Crystal clear transparency
+      color: 0xc7ebfd,
+      transmission: 0.94,
       opacity: 1.0,
       transparent: true,
-      roughness: 0.02,            // Mirror-smooth fluid body
+      roughness: 0.02,
       metalness: 0.02,
-      ior: 1.333,                 // Exact physical index of refraction for water at 20°C
-      attenuationColor: 0x0284c7, // Light absorption path color
-      attenuationDistance: 0.22,  // Natural fluid absorption
-      depthWrite: false,          // Essential for proper transparency sorting with outer glass
+      ior: 1.333,
+      attenuationColor: 0x0284c7,
+      attenuationDistance: 0.22,
+      depthWrite: false,
       side: THREE.DoubleSide,
     });
 
-    // Specular top water surface plane with reflections and meniscus
     const waterSurfaceMat = new THREE.MeshPhysicalMaterial({
       color: 0xbae6fd,
       transmission: 0.88,
@@ -799,7 +903,6 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
       side: THREE.DoubleSide,
     });
 
-    // Meniscus border material hugging glass/cup wall
     const waterMeniscusMat = new THREE.MeshPhysicalMaterial({
       color: 0x7dd3fc,
       transmission: 0.85,
@@ -822,20 +925,20 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
     });
 
     const royalBlueMat = new THREE.MeshPhysicalMaterial({
-      color: 0x1d4ed8, // Dark royal blue
+      color: 0x1d4ed8,
       roughness: 0.20,
       metalness: 0.25,
       clearcoat: 0.85,
     });
 
     const blackAccentMat = new THREE.MeshStandardMaterial({
-      color: 0x0f172a, // Deep slate black
+      color: 0x0f172a,
       roughness: 0.35,
       metalness: 0.45,
     });
 
     const silverEmblemMat = new THREE.MeshStandardMaterial({
-      color: 0xe2e8f0, // Polished chrome / silver
+      color: 0xe2e8f0,
       metalness: 0.92,
       roughness: 0.15,
     });
@@ -850,63 +953,73 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
       depthWrite: false,
     });
 
-    // Helper: Create single tableware item mesh
-    const createTablewareMesh = (type: string, isCompleted: boolean) => {
+    // Helper: Create single tableware item mesh with elegant accent rims
+    const createTablewareMesh = (type: string, isCompleted: boolean, personX: number = 0) => {
       const objGroup = new THREE.Group();
 
+      // Determine rim accent color based on diner side
+      const rimColor = personX < -0.1 ? 0xdc2626 : personX > 0.1 ? 0x2563eb : 0xd4af37;
+      const rimAccentMat = new THREE.MeshStandardMaterial({
+        color: rimColor,
+        roughness: 0.25,
+        metalness: 0.6,
+      });
+
       if (type === 'plate') {
-        // Realistic Ceramic Dinner Plate
+        // Ceramic Dinner Plate with Spider-Man Red / Blue Accent Rim
         const base = new THREE.Mesh(new THREE.CylinderGeometry(0.108, 0.095, 0.010, 32), ceramicMat);
         base.position.y = 0.005;
         base.castShadow = true;
         base.receiveShadow = true;
         objGroup.add(base);
 
-        const rim = new THREE.Mesh(new THREE.TorusGeometry(0.102, 0.008, 12, 32), ceramicMat);
+        const rim = new THREE.Mesh(new THREE.TorusGeometry(0.104, 0.008, 12, 32), rimAccentMat);
         rim.rotation.x = Math.PI / 2;
         rim.position.y = 0.009;
         rim.castShadow = true;
         objGroup.add(rim);
+
       } else if (type === 'bowl') {
-        // Soup Bowl nested appropriately atop / inside the plate
+        // Ceramic Soup Bowl nested atop plate
         const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.068, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.5), ceramicMat);
         bowl.rotation.x = Math.PI;
         bowl.position.y = 0.040;
         bowl.castShadow = true;
         objGroup.add(bowl);
 
+        const rim = new THREE.Mesh(new THREE.TorusGeometry(0.066, 0.004, 8, 24), rimAccentMat);
+        rim.rotation.x = Math.PI / 2;
+        rim.position.y = 0.040;
+        objGroup.add(rim);
+
         const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.006, 24), ceramicMat);
         foot.position.y = 0.003;
         foot.castShadow = true;
         objGroup.add(foot);
+
       } else if (type === 'cup') {
-        // --- CERAMIC CUP WITH 90% WATER LEVEL ---
-        // Formula: waterHeight = cavityHeight * 0.90
-        // Empty space: 10% below the top rim
+        // Ceramic Cup with 90% Liquid Level
         const cupTotalHeight = 0.076;
         const cupBaseThickness = 0.008;
         const cupWallThickness = 0.003;
-        const cupCavityHeight = cupTotalHeight - cupBaseThickness; // 0.068m
-        const cupWaterHeight = cupCavityHeight * 0.90; // 0.0612m (90% capacity)
+        const cupCavityHeight = cupTotalHeight - cupBaseThickness;
+        const cupWaterHeight = cupCavityHeight * 0.90;
 
-        // Outer ceramic cup body
         const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.032, cupTotalHeight, 32), ceramicMat);
         cup.position.y = cupTotalHeight / 2;
         cup.castShadow = true;
         cup.receiveShadow = true;
         objGroup.add(cup);
 
-        // Ceramic Handle
-        const handle = new THREE.Mesh(new THREE.TorusGeometry(0.018, 0.004, 8, 16, Math.PI), ceramicMat);
+        const handle = new THREE.Mesh(new THREE.TorusGeometry(0.018, 0.004, 8, 16, Math.PI), rimAccentMat);
         handle.rotation.z = -Math.PI / 2;
         handle.position.set(0.038, 0.038, 0);
         handle.castShadow = true;
         objGroup.add(handle);
 
-        // 90% Water Column inside Cup
-        const cupInnerBotRadius = 0.032 - cupWallThickness; // 0.029m
-        const cupInnerTopRadius = 0.036 - cupWallThickness; // 0.033m
-        const cupWaterTopRadius = cupInnerBotRadius + (cupInnerTopRadius - cupInnerBotRadius) * 0.90; // 0.0326m
+        const cupInnerBotRadius = 0.032 - cupWallThickness;
+        const cupInnerTopRadius = 0.036 - cupWallThickness;
+        const cupWaterTopRadius = cupInnerBotRadius + (cupInnerTopRadius - cupInnerBotRadius) * 0.90;
 
         const cupWaterMesh = new THREE.Mesh(
           new THREE.CylinderGeometry(cupWaterTopRadius, cupInnerBotRadius, cupWaterHeight, 24),
@@ -915,7 +1028,6 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         cupWaterMesh.position.y = cupBaseThickness + cupWaterHeight / 2;
         objGroup.add(cupWaterMesh);
 
-        // Horizontal Water Surface Disc at 90% (10% empty space below 0.076m rim)
         const cupWaterSurface = new THREE.Mesh(
           new THREE.CircleGeometry(cupWaterTopRadius - 0.0003, 24),
           waterSurfaceMat
@@ -924,17 +1036,7 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         cupWaterSurface.position.y = cupBaseThickness + cupWaterHeight;
         objGroup.add(cupWaterSurface);
 
-        // Capillary Meniscus Ring
-        const cupMeniscus = new THREE.Mesh(
-          new THREE.TorusGeometry(cupWaterTopRadius - 0.0006, 0.0006, 8, 24),
-          waterMeniscusMat
-        );
-        cupMeniscus.rotation.x = Math.PI / 2;
-        cupMeniscus.position.y = cupBaseThickness + cupWaterHeight;
-        objGroup.add(cupMeniscus);
-
       } else if (type === 'spoon') {
-        // Metallic Cutlery Spoon
         const handle = new THREE.Mesh(new THREE.BoxGeometry(0.010, 0.003, 0.13), steelMat);
         handle.position.y = 0.002;
         handle.position.z = 0.02;
@@ -947,8 +1049,8 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
 
         objGroup.add(handle);
         objGroup.add(scoop);
+
       } else if (type === 'additional_spoon') {
-        // Additional Spoon (companion spoon placed parallel)
         const handle = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.003, 0.11), steelMat);
         handle.position.y = 0.002;
         handle.position.z = 0.02;
@@ -961,30 +1063,34 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
 
         objGroup.add(handle);
         objGroup.add(scoop);
+
+      } else if (type === 'fork') {
+        objGroup.add(createDinnerFork());
+
+      } else if (type === 'knife') {
+        objGroup.add(createDinnerKnife());
+
+      } else if (type === 'napkin') {
+        objGroup.add(createFoldedNapkin());
+
       } else if (type === 'glass' || type === 'drinking_glass') {
-        // --- REALISTIC DRINKING GLASS WITH EXACT 90% WATER LEVEL ---
-        // Formula: waterHeight = cavityHeight * 0.90
-        // Empty space: 10% below the top rim
+        // Borosilicate Drinking Glass with 90% Water Level
         const totalGlassHeight = 0.110;
         const baseThickness = 0.012;
         const wallThickness = 0.0025;
         const topRadius = 0.035;
         const botRadius = 0.028;
+        const cavityHeight = totalGlassHeight - baseThickness;
+        const waterHeight = cavityHeight * 0.90; // Exactly 90%
 
-        const cavityHeight = totalGlassHeight - baseThickness; // 0.098m
-        const waterHeight = cavityHeight * 0.90; // 0.0882m (exactly 90%)
-
-        // (a) Solid weighted optical glass base
         const glassBase = new THREE.Mesh(
           new THREE.CylinderGeometry(botRadius, botRadius - 0.001, baseThickness, 32),
           glassMat
         );
         glassBase.position.y = baseThickness / 2;
         glassBase.castShadow = true;
-        glassBase.receiveShadow = true;
         objGroup.add(glassBase);
 
-        // (b) Outer Borosilicate Glass Cylinder Body
         const glassWall = new THREE.Mesh(
           new THREE.CylinderGeometry(topRadius, botRadius, totalGlassHeight, 32, 1, true),
           glassMat
@@ -993,7 +1099,6 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         glassWall.castShadow = true;
         objGroup.add(glassWall);
 
-        // (c) Fire-Polished Rounded Glass Rim
         const rimTorus = new THREE.Mesh(
           new THREE.TorusGeometry(topRadius - wallThickness / 2, wallThickness / 2, 8, 32),
           glassMat
@@ -1002,10 +1107,9 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         rimTorus.position.y = totalGlassHeight;
         objGroup.add(rimTorus);
 
-        // (d) Realistic 3D Water Volume (Transparent, Refractive ior 1.333, 90% Filled)
-        const innerBotRadius = botRadius - wallThickness; // 0.0255m
-        const innerTopRadius = topRadius - wallThickness; // 0.0325m
-        const waterTopRadius = innerBotRadius + (innerTopRadius - innerBotRadius) * 0.90; // 0.0318m
+        const innerBotRadius = botRadius - wallThickness;
+        const innerTopRadius = topRadius - wallThickness;
+        const waterTopRadius = innerBotRadius + (innerTopRadius - innerBotRadius) * 0.90;
 
         const waterMesh = new THREE.Mesh(
           new THREE.CylinderGeometry(waterTopRadius, innerBotRadius, waterHeight, 32),
@@ -1014,16 +1118,14 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         waterMesh.position.y = baseThickness + waterHeight / 2;
         objGroup.add(waterMesh);
 
-        // (e) Horizontal Flat Water Surface Disc at 90% Level (10% Below Rim)
         const waterSurfaceDisc = new THREE.Mesh(
           new THREE.CircleGeometry(waterTopRadius - 0.0004, 32),
           waterSurfaceMat
         );
         waterSurfaceDisc.rotation.x = -Math.PI / 2;
-        waterSurfaceDisc.position.y = baseThickness + waterHeight; // 0.1002m (10% below 0.110m rim)
+        waterSurfaceDisc.position.y = baseThickness + waterHeight;
         objGroup.add(waterSurfaceDisc);
 
-        // (f) Natural Capillary Meniscus Ring near the Glass Wall
         const meniscusRing = new THREE.Mesh(
           new THREE.TorusGeometry(waterTopRadius - 0.0008, 0.0008, 8, 32),
           waterMeniscusMat
@@ -1033,31 +1135,15 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         objGroup.add(meniscusRing);
 
       } else if (type === 'jug' || type === 'water_jug') {
-        // --- SPIDER-MAN THEMED WATER JUG WITH 90% WATER ---
-        // Dominant deep Spider-Man red body with black spider-web pattern,
-        // royal blue secondary sections, subtle black detailing, stylized metallic spider emblem,
-        // and internal transparent water filled to 90% capacity!
-
-        // (a) Dark Royal Blue Pedestal Base
+        // Spider-Man Themed Water Jug with 90% Water Level
         const baseCollar = new THREE.Mesh(
           new THREE.CylinderGeometry(0.066, 0.068, 0.014, 32),
           royalBlueMat
         );
         baseCollar.position.y = 0.007;
         baseCollar.castShadow = true;
-        baseCollar.receiveShadow = true;
         objGroup.add(baseCollar);
 
-        // Black accent divider ring at base
-        const baseBlackRing = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.0665, 0.0665, 0.003, 32),
-          blackAccentMat
-        );
-        baseBlackRing.position.y = 0.015;
-        objGroup.add(baseBlackRing);
-
-        // (b) Transparent Interior Borosilicate Glass Core
-        // Allows water inside the jug to refract light and remain visible through viewing windows
         const innerGlassCore = new THREE.Mesh(
           new THREE.CylinderGeometry(0.062, 0.062, 0.145, 32),
           jugGlassMat
@@ -1065,7 +1151,6 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         innerGlassCore.position.y = 0.082;
         objGroup.add(innerGlassCore);
 
-        // (c) Dominant Deep Spider-Man Red Body with Black Spider-Web Pattern
         const bodyWeb = new THREE.Mesh(
           new THREE.CylinderGeometry(0.065, 0.065, 0.120, 32, 1, true),
           spidermanRedMat
@@ -1074,7 +1159,6 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         bodyWeb.castShadow = true;
         objGroup.add(bodyWeb);
 
-        // Transparent vertical gauge / level windows letting light pass to display internal 90% water
         const gaugeGlass = new THREE.Mesh(
           new THREE.BoxGeometry(0.014, 0.108, 0.132),
           jugGlassMat
@@ -1082,15 +1166,6 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         gaugeGlass.position.set(0, 0.076, 0);
         objGroup.add(gaugeGlass);
 
-        // Black accent divider ring at neck
-        const neckBlackRing = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.052, 0.0652, 0.004, 32),
-          blackAccentMat
-        );
-        neckBlackRing.position.y = 0.138;
-        objGroup.add(neckBlackRing);
-
-        // (d) Dark Royal Blue Neck Collar & Spout
         const neckCollar = new THREE.Mesh(
           new THREE.CylinderGeometry(0.048, 0.052, 0.026, 32),
           royalBlueMat
@@ -1099,7 +1174,6 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         neckCollar.castShadow = true;
         objGroup.add(neckCollar);
 
-        // Aerodynamic dripless pouring spout
         const spoutLip = new THREE.Mesh(
           new THREE.ConeGeometry(0.018, 0.024, 16),
           royalBlueMat
@@ -1109,16 +1183,6 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         spoutLip.castShadow = true;
         objGroup.add(spoutLip);
 
-        // Subtle black spout accent tip
-        const spoutTip = new THREE.Mesh(
-          new THREE.ConeGeometry(0.008, 0.012, 16),
-          blackAccentMat
-        );
-        spoutTip.rotation.x = -Math.PI / 3;
-        spoutTip.position.set(0, 0.167, 0.060);
-        objGroup.add(spoutTip);
-
-        // (e) Ergonomic Royal Blue D-Handle with Matte Black Grip (42mm clearance for SO-101)
         const handle = new THREE.Mesh(
           new THREE.TorusGeometry(0.040, 0.008, 16, 32, Math.PI),
           royalBlueMat
@@ -1128,7 +1192,6 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         handle.castShadow = true;
         objGroup.add(handle);
 
-        // Matte black inner anti-slip grip lining
         const innerGrip = new THREE.Mesh(
           new THREE.TorusGeometry(0.036, 0.004, 12, 32, Math.PI),
           blackAccentMat
@@ -1137,7 +1200,6 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         innerGrip.position.set(0, 0.082, -0.068);
         objGroup.add(innerGrip);
 
-        // (f) 3D Stylized Metallic Spider Emblem on Front Chest
         const emblemBody = new THREE.Mesh(
           new THREE.OctahedronGeometry(0.008, 1),
           silverEmblemMat
@@ -1146,38 +1208,16 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         emblemBody.position.set(0, 0.080, 0.066);
         objGroup.add(emblemBody);
 
-        // Angular metallic spider legs
-        [-1, 1].forEach((side) => {
-          const upperLeg = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.0012, 0.0012, 0.018, 8),
-            blackAccentMat
-          );
-          upperLeg.rotation.z = side * Math.PI / 3;
-          upperLeg.position.set(side * 0.011, 0.088, 0.066);
-          objGroup.add(upperLeg);
-
-          const lowerLeg = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.0012, 0.0012, 0.018, 8),
-            blackAccentMat
-          );
-          lowerLeg.rotation.z = side * -Math.PI / 3;
-          lowerLeg.position.set(side * 0.011, 0.072, 0.066);
-          objGroup.add(lowerLeg);
-        });
-
-        // (g) REALISTIC WATER INSIDE JUG — 90% CAPACITY
-        // Jug cavity height: 0.150m. 90% water height: 0.135m. Empty space: 0.015m (10%) below rim at 0.164m.
-        const jugWaterHeight = 0.150 * 0.90; // 0.135m
+        // 90% Water inside Jug
+        const jugWaterHeight = 0.150 * 0.90;
         const jugWaterRadius = 0.059;
         const jugWaterMesh = new THREE.Mesh(
           new THREE.CylinderGeometry(jugWaterRadius, jugWaterRadius, jugWaterHeight, 32),
           waterMat
         );
-        // Base is at 0.014m, center is at 0.014 + 0.135 / 2 = 0.0815m
         jugWaterMesh.position.y = 0.014 + jugWaterHeight / 2;
         objGroup.add(jugWaterMesh);
 
-        // Top horizontal water surface disc at 90% capacity
         const jugWaterSurface = new THREE.Mesh(
           new THREE.CircleGeometry(jugWaterRadius - 0.0005, 32),
           waterSurfaceMat
@@ -1185,15 +1225,6 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         jugWaterSurface.rotation.x = -Math.PI / 2;
         jugWaterSurface.position.y = 0.014 + jugWaterHeight;
         objGroup.add(jugWaterSurface);
-
-        // Capillary meniscus ring contouring the jug glass wall
-        const jugMeniscus = new THREE.Mesh(
-          new THREE.TorusGeometry(jugWaterRadius - 0.001, 0.0015, 8, 32),
-          waterMeniscusMat
-        );
-        jugMeniscus.rotation.x = Math.PI / 2;
-        jugMeniscus.position.y = 0.014 + jugWaterHeight;
-        objGroup.add(jugMeniscus);
 
       } else {
         const cubeMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.5 });
@@ -1203,7 +1234,7 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         objGroup.add(cube);
       }
 
-      // Add green verified glow ring if completed
+      // Verified glow ring if completed
       if (isCompleted) {
         const ring = new THREE.Mesh(
           new THREE.RingGeometry(0.06, 0.07, 24),
@@ -1217,7 +1248,7 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
       return objGroup;
     };
 
-    // Render Completed, Active, and Staged Items
+    // A. Render Simulated Tableware Items (Plates, Bowls, Cups, Spoons)
     if (plan && plan.allItems && Array.isArray(plan.allItems)) {
       plan.allItems.forEach((item) => {
         const isDone = completedItems.some(c => c.id === item.id);
@@ -1231,12 +1262,11 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         } else if (isPlaying) {
           pos = item.sourcePos;
         } else {
-          // Idle / Completed preview
           pos = item.targetPos;
         }
 
         if (pos) {
-          const itemMesh = createTablewareMesh(item.type, isDone);
+          const itemMesh = createTablewareMesh(item.type, isDone, pos.x);
           const arcZ = pos.z || 0;
           itemMesh.position.set(pos.x, 0.750 + arcZ, -pos.y);
           if (item.orientation !== undefined) {
@@ -1247,29 +1277,89 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
       });
     }
 
-    // Default static centerpiece: Spider-Man Themed Water Jug (90% Water)
-    const jugMesh = createTablewareMesh('jug', true);
-    jugMesh.position.set(0.0, 0.751, -0.06);
+    // B. Render Restaurant Place Setting Complements (Fork on Left, Knife on Right, Drinking Glass, Folded Napkin)
+    const guests = plan?.isValid ? plan.groupSize : 4;
+    const centers = generatePlaceSettingCenters(guests);
+
+    centers.forEach((seat) => {
+      const rad = (seat.yaw * Math.PI) / 180;
+      const ux = Math.sin(rad);  // Forward unit vector
+      const uy = Math.cos(rad);
+      const vx = Math.cos(rad);  // Right unit vector
+      const vy = -Math.sin(rad);
+
+      const cx = seat.pos.x;
+      const cy = seat.pos.y;
+
+      // 1. Dinner Fork on Diner's Left (-15cm right vector, 0cm forward)
+      const forkX = cx - 0.15 * vx;
+      const forkY = cy - 0.15 * vy;
+      const forkMesh = createTablewareMesh('fork', true, cx);
+      forkMesh.position.set(forkX, 0.750, -forkY);
+      forkMesh.rotation.y = THREE.MathUtils.degToRad(-seat.yaw);
+      group.add(forkMesh);
+
+      // 2. Dinner Knife on Diner's Right (+12cm right vector, 0cm forward)
+      const knifeX = cx + 0.12 * vx;
+      const knifeY = cy + 0.12 * vy;
+      const knifeMesh = createTablewareMesh('knife', true, cx);
+      knifeMesh.position.set(knifeX, 0.750, -knifeY);
+      knifeMesh.rotation.y = THREE.MathUtils.degToRad(-seat.yaw);
+      group.add(knifeMesh);
+
+      // 3. Folded Restaurant Napkin on Diner's Left (-22cm right vector, 0cm forward)
+      const napkinX = cx - 0.22 * vx;
+      const napkinY = cy - 0.22 * vy;
+      const napkinMesh = createTablewareMesh('napkin', true, cx);
+      napkinMesh.position.set(napkinX, 0.750, -napkinY);
+      napkinMesh.rotation.y = THREE.MathUtils.degToRad(-seat.yaw);
+      group.add(napkinMesh);
+
+      // 4. Drinking Glass with 90% Water Level (+12cm right vector, +16cm forward)
+      const glassX = cx + 0.12 * vx + 0.16 * ux;
+      const glassY = cy + 0.12 * vy + 0.16 * uy;
+      const glassMesh = createTablewareMesh('glass', true, cx);
+      glassMesh.position.set(glassX, 0.751, -glassY);
+      glassMesh.rotation.y = THREE.MathUtils.degToRad(-seat.yaw);
+      group.add(glassMesh);
+    });
+
+    // C. Centerpiece: Spider-Man Themed Water Jug (with 90% water level) placed near center candle
+    const jugMesh = createTablewareMesh('jug', true, 0);
+    jugMesh.position.set(0.0, 0.751, -0.16);
     group.add(jugMesh);
-
-    // Left Drinking Glass (90% Water, 10% Empty Headspace)
-    const glassMeshLeft = createTablewareMesh('glass', true);
-    glassMeshLeft.position.set(-0.16, 0.751, -0.06);
-    group.add(glassMeshLeft);
-
-    // Right Drinking Glass (90% Water, 10% Empty Headspace)
-    const glassMeshRight = createTablewareMesh('glass', true);
-    glassMeshRight.position.set(0.16, 0.751, -0.06);
-    group.add(glassMeshRight);
 
   }, [plan, completedItems, activeItem, isPlaying]);
 
-  // Camera Mode Transitions safely
+  // Camera Mode Transitions
   const handleCameraChange = useCallback((mode: CameraPreset) => {
     setActiveCamMode(mode);
     if (onCameraPresetChange) onCameraPresetChange(mode);
 
     switch (mode) {
+      case 'CINEMATIC':
+        targetCamPos.current.set(0, 1.9, 2.6);
+        targetCamLook.current.set(0, 0.72, 0);
+        break;
+      case 'TABLE_VIEW':
+        targetCamPos.current.set(0, 2.2, 1.4);
+        targetCamLook.current.set(0, 0.75, 0);
+        break;
+      case 'ROBOT_VIEW':
+        targetCamPos.current.set(0, 1.25, 1.3);
+        targetCamLook.current.set(0, 0.80, 0.15);
+        break;
+      case 'DINNER_VIEW':
+        targetCamPos.current.set(0.45, 1.05, 0.65);
+        targetCamLook.current.set(0, 0.82, 0);
+        break;
+      case 'INSPECTOR':
+        targetCamPos.current.set(0, 2.8, 0.01);
+        targetCamLook.current.set(0, 0.75, 0);
+        break;
+      case 'PET_CAM':
+        // Dynamically updated in render loop
+        break;
       case 'ORBIT':
         targetCamPos.current.set(0, 1.8, 1.9);
         targetCamLook.current.set(0, 0.75, 0);
@@ -1291,7 +1381,6 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         targetCamLook.current.set(0.38, 0.85, 0.1);
         break;
       case 'ROBOT_POV':
-        // Over-the-shoulder POV of Left or Right arm
         if (selectedArm === 'right') {
           const tx = rightArm?.targetPose?.x ?? rightArm?.eePose?.x ?? 0.20;
           const ty = rightArm?.targetPose?.y ?? rightArm?.eePose?.y ?? 0.05;
@@ -1330,23 +1419,19 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
 
-    // Check hit on Tabletop or Arms
     const intersects = raycaster.intersectObjects(scene.children, true);
     for (const hit of intersects) {
-      // Clicked left arm
       if (hit.object.name.includes('left') || hit.object.parent?.name.includes('left')) {
         onSelectArm('left');
         return;
       }
-      // Clicked right arm
       if (hit.object.name.includes('right') || hit.object.parent?.name.includes('right')) {
         onSelectArm('right');
         return;
       }
-      // Clicked tabletop: send target position to selected arm
       if (hit.point && Math.abs(hit.point.y - 0.75) < 0.05) {
         const targetX = hit.point.x;
-        const targetY = -hit.point.z; // Convert Three.js Z to Table frame Y
+        const targetY = -hit.point.z;
         setTableTargetCoord({ x: targetX, y: targetY, z: 0.78 });
 
         if (selectedArm && onSetTargetPos) {
@@ -1358,7 +1443,7 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
   };
 
   return (
-    <div className="relative w-full h-full min-h-[580px] flex flex-col bg-[#080c14] overflow-hidden select-none">
+    <div className="relative w-full h-full min-h-[580px] flex flex-col bg-[#0b1220] overflow-hidden select-none">
       {/* 3D WebGL Canvas Container */}
       <div 
         ref={mountRef} 
@@ -1366,9 +1451,9 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         className="w-full flex-1 min-h-[520px] cursor-grab active:cursor-grabbing"
       />
 
-      {/* Top Floating Simulation Bar */}
-      <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
-        <div className="flex items-center gap-2 bg-slate-900/85 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-slate-700/60 shadow-xl pointer-events-auto">
+      {/* Top Floating Digital-Twin HUD Bar */}
+      <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
+        <div className="flex items-center gap-2 bg-slate-950/85 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-slate-700/60 shadow-xl pointer-events-auto">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -1382,60 +1467,84 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
           <span className="text-xs text-slate-400 font-mono">
             {fps} FPS · 60 Hz Control
           </span>
+          <div className="h-3.5 w-px bg-slate-700 mx-1" />
+          <div className="flex items-center gap-1 text-xs text-amber-400 font-mono">
+            <Flame className="w-3.5 h-3.5 animate-pulse" />
+            <span>Candle Centerpiece Lit</span>
+          </div>
         </div>
 
-        {/* Selected Arm Pill */}
-        <div className="flex items-center gap-2 bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/60 shadow-xl pointer-events-auto">
-          <span className="text-xs text-slate-400">Selected Arm:</span>
-          <button
-            onClick={() => onSelectArm(selectedArm === 'left' ? null : 'left')}
-            className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
-              selectedArm === 'left'
-                ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-rose-400" />
-            🔴 Red Left
-          </button>
-          <button
-            onClick={() => onSelectArm(selectedArm === 'right' ? null : 'right')}
-            className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
-              selectedArm === 'right'
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-blue-400" />
-            🔵 Blue Right
-          </button>
+        {/* Selected Arm Pill & Pet Status */}
+        <div className="flex items-center gap-2 pointer-events-auto">
+          {/* Autonomous Pet Pill */}
+          <div className="flex items-center gap-1.5 bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/60 shadow-xl">
+            <Bot className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="text-[11px] font-mono text-slate-300">ROBOT PET:</span>
+            <span className={`text-[11px] font-mono font-bold ${petActive ? 'text-cyan-400' : 'text-slate-500'}`}>
+              {petActive ? '● ONLINE' : '○ OFF'}
+            </span>
+          </div>
+
+          {/* Arm Selector */}
+          <div className="flex items-center gap-1.5 bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/60 shadow-xl">
+            <span className="text-xs text-slate-400">Arm:</span>
+            <button
+              onClick={() => onSelectArm(selectedArm === 'left' ? null : 'left')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+                selectedArm === 'left'
+                  ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-rose-400" />
+              🔴 Left
+            </button>
+            <button
+              onClick={() => onSelectArm(selectedArm === 'right' ? null : 'right')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+                selectedArm === 'right'
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-blue-400" />
+              🔵 Right
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Floating Camera Presets Bar */}
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-slate-900/90 backdrop-blur-md p-1.5 rounded-2xl border border-slate-700/70 shadow-2xl z-20 pointer-events-auto">
+      {/* Floating Cinematic Camera Presets Bar */}
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-slate-950/90 backdrop-blur-md p-1.5 rounded-2xl border border-slate-700/70 shadow-2xl z-20 pointer-events-auto">
         <div className="flex items-center gap-1 text-[11px] font-mono text-slate-400 px-2">
           <Camera className="w-3.5 h-3.5 text-cyan-400" />
           <span>VIEW:</span>
         </div>
-        {(['ORBIT', 'TOP', 'FRONT', 'LEFT', 'RIGHT', 'ROBOT_POV', 'TASK_POV'] as CameraPreset[]).map((mode) => (
+        {[
+          { id: 'CINEMATIC', label: 'CINEMATIC' },
+          { id: 'TABLE_VIEW', label: 'TABLE VIEW' },
+          { id: 'ROBOT_VIEW', label: 'ROBOT VIEW' },
+          { id: 'DINNER_VIEW', label: 'DINNER VIEW' },
+          { id: 'INSPECTOR', label: 'INSPECTOR' },
+          { id: 'PET_CAM', label: 'PET CAM 🐕' },
+        ].map((item) => (
           <button
-            key={mode}
-            onClick={() => handleCameraChange(mode)}
+            key={item.id}
+            onClick={() => handleCameraChange(item.id as CameraPreset)}
             className={`px-2.5 py-1 text-[11px] font-medium rounded-lg transition-all ${
-              activeCamMode === mode
-                ? 'bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/30'
+              activeCamMode === item.id
+                ? 'bg-gradient-to-r from-red-600 to-blue-600 text-white font-bold shadow-md shadow-blue-500/20'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white'
             }`}
           >
-            {mode.replace('_', ' ')}
+            {item.label}
           </button>
         ))}
       </div>
 
       {/* Table Interaction Hint */}
       {selectedArm && (
-        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-amber-500/90 text-slate-950 text-xs font-semibold px-3 py-1 rounded-full shadow-lg pointer-events-none flex items-center gap-1.5 animate-pulse">
+        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-amber-500/90 text-slate-950 text-xs font-semibold px-3 py-1 rounded-full shadow-lg pointer-events-none flex items-center gap-1.5 animate-pulse z-10">
           <Move className="w-3.5 h-3.5" />
           Click anywhere on tabletop to command {selectedArm.toUpperCase()} arm target
         </div>
