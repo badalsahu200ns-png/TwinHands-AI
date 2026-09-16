@@ -77,6 +77,7 @@ interface ThreeWorkspace3DProps {
   petMode?: 'PATROL' | 'IDLE';
   onPetTelemetryChange?: (telemetry: RobotPetTelemetry) => void;
   lightingPreset?: LightingPreset;
+  hideEmbeddedHUD?: boolean;
 }
 
 /**
@@ -233,6 +234,7 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
   petMode = 'PATROL',
   onPetTelemetryChange,
   lightingPreset = 'CINEMATIC',
+  hideEmbeddedHUD = false,
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -289,7 +291,7 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
   const [fps, setFps] = useState<number>(60);
 
   // Camera preset destinations
-  const targetCamPos = useRef<THREE.Vector3>(new THREE.Vector3(0, 1.9, 2.6));
+  const targetCamPos = useRef<THREE.Vector3>(new THREE.Vector3(0, 1.95, 2.75));
   const targetCamLook = useRef<THREE.Vector3>(new THREE.Vector3(0, 0.72, 0));
 
   // Initialize Three.js Scene
@@ -323,7 +325,7 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
 
     // 2. Camera
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.05, 50);
-    camera.position.set(0, 1.9, 2.6);
+    camera.position.set(0, 1.95, 2.75);
     cameraRef.current = camera;
 
     // 3. Renderer
@@ -630,15 +632,19 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
           onPetTelemetryChange
         );
 
-        // Dynamic Pet Cam Tracking
+        // Dynamic Pet Cam Tracking (Smooth over-the-shoulder follow cam)
         if (activeCamMode === 'PET_CAM') {
           const ps = robotPetStateRef.current;
           targetCamPos.current.set(
-            ps.pos.x - Math.sin(ps.headingRad) * 1.25,
-            0.62,
-            ps.pos.z - Math.cos(ps.headingRad) * 1.25
+            ps.pos.x - Math.sin(ps.headingRad) * 1.18,
+            0.52,
+            ps.pos.z - Math.cos(ps.headingRad) * 1.18
           );
-          targetCamLook.current.set(ps.pos.x, 0.25, ps.pos.z);
+          targetCamLook.current.set(
+            ps.pos.x + Math.sin(ps.headingRad) * 0.45,
+            0.28,
+            ps.pos.z + Math.cos(ps.headingRad) * 0.45
+          );
         }
       }
 
@@ -1338,7 +1344,7 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
 
     switch (mode) {
       case 'CINEMATIC':
-        targetCamPos.current.set(0, 1.9, 2.6);
+        targetCamPos.current.set(0, 1.95, 2.75);
         targetCamLook.current.set(0, 0.72, 0);
         break;
       case 'TABLE_VIEW':
@@ -1451,96 +1457,101 @@ export const ThreeWorkspace3D: React.FC<ThreeWorkspace3DProps> = ({
         className="w-full flex-1 min-h-[520px] cursor-grab active:cursor-grabbing"
       />
 
-      {/* Top Floating Digital-Twin HUD Bar */}
-      <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
-        <div className="flex items-center gap-2 bg-slate-950/85 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-slate-700/60 shadow-xl pointer-events-auto">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-            </span>
-            <span className="text-xs font-semibold text-emerald-400 font-mono tracking-wider">
-              MUJOCO 3.X REAL-TIME 3D
-            </span>
-          </div>
-          <div className="h-3.5 w-px bg-slate-700 mx-1" />
-          <span className="text-xs text-slate-400 font-mono">
-            {fps} FPS · 60 Hz Control
-          </span>
-          <div className="h-3.5 w-px bg-slate-700 mx-1" />
-          <div className="flex items-center gap-1 text-xs text-amber-400 font-mono">
-            <Flame className="w-3.5 h-3.5 animate-pulse" />
-            <span>Candle Centerpiece Lit</span>
-          </div>
-        </div>
+      {/* Optional Embedded Digital-Twin HUD Bar and Presets (rendered if hideEmbeddedHUD is false) */}
+      {!hideEmbeddedHUD && (
+        <>
+          {/* Top Floating Digital-Twin HUD Bar */}
+          <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
+            <div className="flex items-center gap-2 bg-slate-950/85 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-slate-700/60 shadow-xl pointer-events-auto">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+                <span className="text-xs font-semibold text-emerald-400 font-mono tracking-wider">
+                  MUJOCO 3.X REAL-TIME 3D
+                </span>
+              </div>
+              <div className="h-3.5 w-px bg-slate-700 mx-1" />
+              <span className="text-xs text-slate-400 font-mono">
+                {fps} FPS · 60 Hz Control
+              </span>
+              <div className="h-3.5 w-px bg-slate-700 mx-1" />
+              <div className="flex items-center gap-1 text-xs text-amber-400 font-mono">
+                <Flame className="w-3.5 h-3.5 animate-pulse" />
+                <span>Candle Centerpiece Lit</span>
+              </div>
+            </div>
 
-        {/* Selected Arm Pill & Pet Status */}
-        <div className="flex items-center gap-2 pointer-events-auto">
-          {/* Autonomous Pet Pill */}
-          <div className="flex items-center gap-1.5 bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/60 shadow-xl">
-            <Bot className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="text-[11px] font-mono text-slate-300">ROBOT PET:</span>
-            <span className={`text-[11px] font-mono font-bold ${petActive ? 'text-cyan-400' : 'text-slate-500'}`}>
-              {petActive ? '● ONLINE' : '○ OFF'}
-            </span>
+            {/* Selected Arm Pill & Pet Status */}
+            <div className="flex items-center gap-2 pointer-events-auto">
+              {/* Autonomous Pet Pill */}
+              <div className="flex items-center gap-1.5 bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/60 shadow-xl">
+                <span className="text-xs">🐕</span>
+                <span className="text-[11px] font-mono text-slate-300">COMPANION:</span>
+                <span className={`text-[11px] font-mono font-bold ${petActive ? 'text-amber-400' : 'text-slate-500'}`}>
+                  {petActive ? '● ACTIVE' : '○ OFF'}
+                </span>
+              </div>
+
+              {/* Arm Selector */}
+              <div className="flex items-center gap-1.5 bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/60 shadow-xl">
+                <span className="text-xs text-slate-400">Arm:</span>
+                <button
+                  onClick={() => onSelectArm(selectedArm === 'left' ? null : 'left')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+                    selectedArm === 'left'
+                      ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-rose-400" />
+                  🔴 Left
+                </button>
+                <button
+                  onClick={() => onSelectArm(selectedArm === 'right' ? null : 'right')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+                    selectedArm === 'right'
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-blue-400" />
+                  🔵 Right
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* Arm Selector */}
-          <div className="flex items-center gap-1.5 bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/60 shadow-xl">
-            <span className="text-xs text-slate-400">Arm:</span>
-            <button
-              onClick={() => onSelectArm(selectedArm === 'left' ? null : 'left')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
-                selectedArm === 'left'
-                  ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-rose-400" />
-              🔴 Left
-            </button>
-            <button
-              onClick={() => onSelectArm(selectedArm === 'right' ? null : 'right')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
-                selectedArm === 'right'
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-blue-400" />
-              🔵 Right
-            </button>
+          {/* Floating Cinematic Camera Presets Bar */}
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-slate-950/90 backdrop-blur-md p-1.5 rounded-2xl border border-slate-700/70 shadow-2xl z-20 pointer-events-auto">
+            <div className="flex items-center gap-1 text-[11px] font-mono text-slate-400 px-2">
+              <Camera className="w-3.5 h-3.5 text-cyan-400" />
+              <span>VIEW:</span>
+            </div>
+            {[
+              { id: 'CINEMATIC', label: 'CINEMATIC' },
+              { id: 'TABLE_VIEW', label: 'TABLE VIEW' },
+              { id: 'ROBOT_VIEW', label: 'ROBOT VIEW' },
+              { id: 'DINNER_VIEW', label: 'DINNER VIEW' },
+              { id: 'INSPECTOR', label: 'INSPECTOR' },
+              { id: 'PET_CAM', label: 'PET CAM 🐕' },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => handleCameraChange(item.id as CameraPreset)}
+                className={`px-2.5 py-1 text-[11px] font-medium rounded-lg transition-all ${
+                  activeCamMode === item.id
+                    ? 'bg-gradient-to-r from-red-600 to-blue-600 text-white font-bold shadow-md shadow-blue-500/20'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
-        </div>
-      </div>
-
-      {/* Floating Cinematic Camera Presets Bar */}
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-slate-950/90 backdrop-blur-md p-1.5 rounded-2xl border border-slate-700/70 shadow-2xl z-20 pointer-events-auto">
-        <div className="flex items-center gap-1 text-[11px] font-mono text-slate-400 px-2">
-          <Camera className="w-3.5 h-3.5 text-cyan-400" />
-          <span>VIEW:</span>
-        </div>
-        {[
-          { id: 'CINEMATIC', label: 'CINEMATIC' },
-          { id: 'TABLE_VIEW', label: 'TABLE VIEW' },
-          { id: 'ROBOT_VIEW', label: 'ROBOT VIEW' },
-          { id: 'DINNER_VIEW', label: 'DINNER VIEW' },
-          { id: 'INSPECTOR', label: 'INSPECTOR' },
-          { id: 'PET_CAM', label: 'PET CAM 🐕' },
-        ].map((item) => (
-          <button
-            key={item.id}
-            onClick={() => handleCameraChange(item.id as CameraPreset)}
-            className={`px-2.5 py-1 text-[11px] font-medium rounded-lg transition-all ${
-              activeCamMode === item.id
-                ? 'bg-gradient-to-r from-red-600 to-blue-600 text-white font-bold shadow-md shadow-blue-500/20'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+        </>
+      )}
 
       {/* Table Interaction Hint */}
       {selectedArm && (

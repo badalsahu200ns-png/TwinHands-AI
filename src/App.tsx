@@ -418,7 +418,11 @@ export default function App() {
       />
 
       {/* Main Workspace Layout */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-4 sm:px-6 space-y-4">
+      <main className={`flex-1 w-full mx-auto space-y-4 transition-all duration-300 ${
+        workspaceMode === 'simulation'
+          ? 'max-w-[1920px] px-2 sm:px-4 py-2'
+          : 'max-w-7xl px-4 py-4 sm:px-6'
+      }`}>
         
         {/* Workspace Mode Switcher */}
         <div className="bg-slate-900/90 p-1.5 rounded-xl border border-slate-800/80 flex items-center justify-between gap-2 shadow-lg">
@@ -432,7 +436,7 @@ export default function App() {
               }`}
             >
               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-              <span>Bimanual Execution Workspace</span>
+              <span>MuJoCo Simulation Workspace</span>
             </button>
             <button
               onClick={() => setWorkspaceMode('cad_digital_twin')}

@@ -971,13 +971,18 @@ export function createFoldedNapkin(): THREE.Mesh {
 }
 
 // =========================================================================
-// 6. AUTONOMOUS QUADRUPED ROBOT COMPANION PET
+// 6. REALISTIC & LOVABLE 3D DOMESTIC PET DOG
 // =========================================================================
 
 export interface RobotPetHierarchy {
   rootGroup: THREE.Group;
   bodyGroup: THREE.Group;
   headGroup: THREE.Group;
+  snoutGroup?: THREE.Group;
+  tailGroup?: THREE.Group;
+  earLGroup?: THREE.Group;
+  earRGroup?: THREE.Group;
+  tongueMesh?: THREE.Mesh;
   eyeL: THREE.Mesh;
   eyeR: THREE.Mesh;
   legs: {
@@ -989,178 +994,449 @@ export interface RobotPetHierarchy {
   shadowDecal: THREE.Mesh;
 }
 
+// Procedural soft fur grain texture for warm domestic coat
+let cachedDogFurTex: THREE.CanvasTexture | null = null;
+function getDogFurTexture(): THREE.CanvasTexture {
+  if (cachedDogFurTex) return cachedDogFurTex;
+  if (typeof document === 'undefined') return new THREE.CanvasTexture({} as HTMLCanvasElement);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return new THREE.CanvasTexture(canvas);
+
+  // Warm golden base
+  ctx.fillStyle = '#d69642';
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Subtle directional fur strands
+  ctx.strokeStyle = 'rgba(235, 175, 95, 0.22)';
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < 3500; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const len = 8 + Math.random() * 12;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (Math.random() - 0.5) * 4, y + len);
+    ctx.stroke();
+  }
+
+  // Darker undertone strands
+  ctx.strokeStyle = 'rgba(140, 80, 25, 0.15)';
+  ctx.lineWidth = 1.0;
+  for (let i = 0; i < 2000; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const len = 6 + Math.random() * 10;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (Math.random() - 0.5) * 3, y + len);
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
+  cachedDogFurTex = tex;
+  return tex;
+}
+
 export function createRobotPet(): RobotPetHierarchy {
   const rootGroup = new THREE.Group();
-  rootGroup.name = 'robot_companion_pet';
+  rootGroup.name = 'lovable_domestic_pet_dog';
 
-  // Materials
-  const chassisMat = new THREE.MeshStandardMaterial({
-    color: 0x111827, // Dark slate metallic
-    roughness: 0.25,
-    metalness: 0.85,
+  // Fur Texture
+  const furTex = getDogFurTexture();
+
+  // Materials for realistic domestic dog (Golden Retriever / friendly domestic pet)
+  const coatMainMat = new THREE.MeshStandardMaterial({
+    color: 0xd99b45, // Warm golden caramel
+    map: furTex,
+    roughness: 0.85,
+    metalness: 0.03,
   });
 
-  const spiderRedMat = new THREE.MeshStandardMaterial({
-    color: 0xdc2626, // Spider-Man red
-    roughness: 0.3,
-    metalness: 0.5,
+  const coatChestMat = new THREE.MeshStandardMaterial({
+    color: 0xf5ecd7, // Soft cream breast/undercoat
+    roughness: 0.88,
+    metalness: 0.02,
   });
 
-  const spiderBlueMat = new THREE.MeshStandardMaterial({
-    color: 0x2563eb, // Spider-Man blue
-    roughness: 0.3,
-    metalness: 0.5,
+  const coatDarkMat = new THREE.MeshStandardMaterial({
+    color: 0x9e5f24, // Warm darker golden-brown for ears & back accent
+    roughness: 0.84,
+    metalness: 0.04,
   });
 
-  const jointMat = new THREE.MeshStandardMaterial({
-    color: 0x030712,
-    roughness: 0.4,
+  const noseMat = new THREE.MeshStandardMaterial({
+    color: 0x121212, // Wet glossy black nose
+    roughness: 0.18,
+    metalness: 0.12,
+  });
+
+  const eyePupilMat = new THREE.MeshStandardMaterial({
+    color: 0x150b04, // Deep glossy puppy eye
+    roughness: 0.08,
+    metalness: 0.3,
+  });
+
+  const eyeSparkleMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff, // Bright reflection sparkle
+  });
+
+  const tongueMat = new THREE.MeshStandardMaterial({
+    color: 0xf472b6, // Cute soft pink tongue
+    roughness: 0.45,
+    metalness: 0.0,
+  });
+
+  const pawPadMat = new THREE.MeshStandardMaterial({
+    color: 0x241d1a, // Soft charcoal paw pads
+    roughness: 0.95,
+    metalness: 0.02,
+  });
+
+  const collarMat = new THREE.MeshStandardMaterial({
+    color: 0xdc2626, // Crimson Spider-Man red collar
+    roughness: 0.35,
+    metalness: 0.25,
+  });
+
+  const tagGoldMat = new THREE.MeshStandardMaterial({
+    color: 0xf59e0b, // Polished brass/gold medal
+    roughness: 0.2,
     metalness: 0.9,
   });
 
-  const footRubberMat = new THREE.MeshStandardMaterial({
-    color: 0x1f2937,
-    roughness: 0.85,
-    metalness: 0.1,
-  });
-
-  const eyeGlowMat = new THREE.MeshBasicMaterial({
-    color: 0x00f0ff, // Glowing cyan sensor eyes
-  });
-
-  // 1. Floating Body Group (Base Height at Y = 0.22m)
+  // 1. Torso & Body Group (Base Height at Y = 0.245m)
+  // Local Forward is +Z, Rear is -Z, Left is -X, Right is +X
   const bodyGroup = new THREE.Group();
-  bodyGroup.position.y = 0.22;
+  bodyGroup.position.y = 0.245;
   rootGroup.add(bodyGroup);
 
-  // Main Carbon Chassis (0.32m L x 0.14m W x 0.08m H)
-  const torsoGeo = new THREE.BoxGeometry(0.15, 0.08, 0.30);
-  const torso = new THREE.Mesh(torsoGeo, chassisMat);
-  torso.castShadow = true;
-  bodyGroup.add(torso);
+  // Deep Chest / Ribcage
+  const chestGeo = new THREE.SphereGeometry(0.092, 16, 16);
+  chestGeo.scale(1.0, 1.15, 1.35);
+  const chestMesh = new THREE.Mesh(chestGeo, coatMainMat);
+  chestMesh.position.set(0, 0.02, 0.03);
+  chestMesh.castShadow = true;
+  bodyGroup.add(chestMesh);
 
-  // Left Side Red Racing Armor
-  const leftArmor = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.065, 0.26), spiderRedMat);
-  leftArmor.position.set(-0.08, 0.005, 0);
-  leftArmor.castShadow = true;
-  bodyGroup.add(leftArmor);
+  // Soft Cream Chest Bib (fluffy front undercoat)
+  const bibGeo = new THREE.SphereGeometry(0.08, 14, 14);
+  bibGeo.scale(0.88, 1.05, 0.85);
+  const bibMesh = new THREE.Mesh(bibGeo, coatChestMat);
+  bibMesh.position.set(0, 0.005, 0.10);
+  bibMesh.castShadow = true;
+  bodyGroup.add(bibMesh);
 
-  // Right Side Blue Racing Armor
-  const rightArmor = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.065, 0.26), spiderBlueMat);
-  rightArmor.position.set(0.08, 0.005, 0);
-  rightArmor.castShadow = true;
-  bodyGroup.add(rightArmor);
+  // Tapered Flank & Waist
+  const waistGeo = new THREE.CylinderGeometry(0.08, 0.07, 0.15, 14);
+  waistGeo.rotateX(Math.PI / 2);
+  const waistMesh = new THREE.Mesh(waistGeo, coatMainMat);
+  waistMesh.position.set(0, 0.015, -0.075);
+  waistMesh.castShadow = true;
+  bodyGroup.add(waistMesh);
 
-  // Top Spine Insignia & Vent Plate
-  const spinePlate = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.015, 0.22), jointMat);
-  spinePlate.position.set(0, 0.045, 0);
-  bodyGroup.add(spinePlate);
+  // Pelvis / Rounded Rump
+  const rumpGeo = new THREE.SphereGeometry(0.084, 16, 16);
+  rumpGeo.scale(1.02, 0.98, 1.1);
+  const rumpMesh = new THREE.Mesh(rumpGeo, coatMainMat);
+  rumpMesh.position.set(0, 0.028, -0.16);
+  rumpMesh.castShadow = true;
+  bodyGroup.add(rumpMesh);
 
-  // Stylized Spider Emblem (Chrome Octahedron)
-  const emblem = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.015, 0),
-    new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.95, roughness: 0.15 })
+  // Subtle Dark Fur Accent Saddle
+  const saddleGeo = new THREE.SphereGeometry(0.078, 12, 12);
+  saddleGeo.scale(0.9, 0.5, 1.2);
+  const saddleMesh = new THREE.Mesh(saddleGeo, coatDarkMat);
+  saddleMesh.position.set(0, 0.075, -0.04);
+  bodyGroup.add(saddleMesh);
+
+  // Stylish Red Collar Band
+  const collarMesh = new THREE.Mesh(
+    new THREE.TorusGeometry(0.062, 0.011, 10, 24),
+    collarMat
   );
-  emblem.scale.set(0.8, 0.3, 1.2);
-  emblem.position.set(0, 0.055, 0);
-  bodyGroup.add(emblem);
+  collarMesh.position.set(0, 0.075, 0.145);
+  collarMesh.rotation.x = Math.PI * 0.18; // angled around neck base
+  collarMesh.castShadow = true;
+  bodyGroup.add(collarMesh);
 
-  // Communication Antenna / Scanner Probe
-  const antenna = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.002, 0.002, 0.08, 8),
-    new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.9 })
+  // Golden Medallion Dog Tag
+  const tagMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.012, 0.012, 0.003, 16),
+    tagGoldMat
   );
-  antenna.position.set(0.03, 0.08, 0.11);
-  antenna.rotation.x = -0.3;
-  bodyGroup.add(antenna);
+  tagMesh.position.set(0, 0.025, 0.185);
+  tagMesh.rotation.x = Math.PI / 2;
+  bodyGroup.add(tagMesh);
 
-  // 2. Articulated Head Group (Pivot at front: Z = -0.16m, Y = 0.02m)
+  // 2. Articulated Head & Face (Pivot at neck crest: Z = +0.17m, Y = +0.11m)
   const headGroup = new THREE.Group();
-  headGroup.position.set(0, 0.02, -0.16);
+  headGroup.position.set(0, 0.11, 0.17);
   bodyGroup.add(headGroup);
 
-  // Head Chassis
-  const headGeo = new THREE.BoxGeometry(0.10, 0.065, 0.09);
-  const headMesh = new THREE.Mesh(headGeo, chassisMat);
-  headMesh.position.set(0, 0.02, -0.04);
-  headMesh.castShadow = true;
-  headGroup.add(headMesh);
+  // Rounded Canine Cranium / Skull
+  const craniumGeo = new THREE.SphereGeometry(0.068, 18, 18);
+  craniumGeo.scale(1.0, 0.96, 1.05);
+  const craniumMesh = new THREE.Mesh(craniumGeo, coatMainMat);
+  craniumMesh.position.set(0, 0.015, 0.015);
+  craniumMesh.castShadow = true;
+  headGroup.add(craniumMesh);
 
-  // Glowing Sensor Eyes / Visor
-  const eyeGeo = new THREE.BoxGeometry(0.022, 0.012, 0.008);
-  const eyeL = new THREE.Mesh(eyeGeo, eyeGlowMat);
-  eyeL.position.set(-0.028, 0.022, -0.088);
+  // Forehead Brow Furrow
+  const browMesh = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.012, 0.042, 6, 8),
+    coatMainMat
+  );
+  browMesh.rotation.z = Math.PI / 2;
+  browMesh.position.set(0, 0.052, 0.042);
+  headGroup.add(browMesh);
+
+  // Snout & Muzzle Group
+  const snoutGroup = new THREE.Group();
+  snoutGroup.position.set(0, -0.005, 0.055);
+  headGroup.add(snoutGroup);
+
+  // Upper Snout (Tapered toward nose along +Z)
+  const snoutGeo = new THREE.CylinderGeometry(0.033, 0.046, 0.075, 14);
+  snoutGeo.rotateX(Math.PI / 2);
+  const snoutMesh = new THREE.Mesh(snoutGeo, coatMainMat);
+  snoutMesh.position.set(0, 0, 0.035);
+  snoutMesh.castShadow = true;
+  snoutGroup.add(snoutMesh);
+
+  // Cream Muzzle Cheeks
+  const cheekGeo = new THREE.SphereGeometry(0.033, 12, 12);
+  cheekGeo.scale(1.15, 0.85, 1.1);
+  const cheekMesh = new THREE.Mesh(cheekGeo, coatChestMat);
+  cheekMesh.position.set(0, -0.015, 0.035);
+  cheekMesh.castShadow = true;
+  snoutGroup.add(cheekMesh);
+
+  // Lower Jaw & Chin
+  const jawGeo = new THREE.CapsuleGeometry(0.016, 0.032, 6, 8);
+  jawGeo.rotateX(Math.PI / 2);
+  const jawMesh = new THREE.Mesh(jawGeo, coatChestMat);
+  jawMesh.position.set(0, -0.024, 0.032);
+  snoutGroup.add(jawMesh);
+
+  // Playful Soft Pink Tongue Peek
+  const tongueMesh = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.009, 0.024, 8, 8),
+    tongueMat
+  );
+  tongueMesh.position.set(0.012, -0.022, 0.055);
+  tongueMesh.rotation.set(0.2, 0.1, -0.15);
+  snoutGroup.add(tongueMesh);
+
+  // Cute Wet Black Nose
+  const noseMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.014, 14, 12),
+    noseMat
+  );
+  noseMesh.scale.set(1.2, 0.85, 0.9);
+  noseMesh.position.set(0, 0.014, 0.074);
+  noseMesh.castShadow = true;
+  snoutGroup.add(noseMesh);
+
+  // Nostrils
+  const nostrilMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
+  const nostrilGeo = new THREE.SphereGeometry(0.0028, 6, 6);
+  const nostrilL = new THREE.Mesh(nostrilGeo, nostrilMat);
+  nostrilL.position.set(-0.0045, 0.011, 0.086);
+  snoutGroup.add(nostrilL);
+  const nostrilR = new THREE.Mesh(nostrilGeo, nostrilMat);
+  nostrilR.position.set(0.0045, 0.011, 0.086);
+  snoutGroup.add(nostrilR);
+
+  // Expressive Puppy Eyes (with warm amber iris & shiny white highlights)
+  const eyeGeo = new THREE.SphereGeometry(0.0125, 16, 16);
+  const eyeL = new THREE.Mesh(eyeGeo, eyePupilMat);
+  eyeL.position.set(-0.037, 0.025, 0.052);
   headGroup.add(eyeL);
 
-  const eyeR = new THREE.Mesh(eyeGeo, eyeGlowMat);
-  eyeR.position.set(0.028, 0.022, -0.088);
+  const eyeR = new THREE.Mesh(eyeGeo, eyePupilMat);
+  eyeR.position.set(0.037, 0.025, 0.052);
   headGroup.add(eyeR);
 
-  // 3. Four Articulated Legs (FL, FR, RL, RR)
-  const legOffsets = [
-    { name: 'FL', x: -0.085, z: -0.11, isLeft: true },
-    { name: 'FR', x: 0.085,  z: -0.11, isLeft: false },
-    { name: 'RL', x: -0.085, z: 0.11,  isLeft: true },
-    { name: 'RR', x: 0.085,  z: 0.11,  isLeft: false },
+  // Eye Specular Sparkles (making the dog look cute, alive & lovable)
+  const sparkleGeo = new THREE.SphereGeometry(0.0035, 8, 8);
+  const sparkleL = new THREE.Mesh(sparkleGeo, eyeSparkleMat);
+  sparkleL.position.set(-0.035, 0.029, 0.063);
+  headGroup.add(sparkleL);
+
+  const sparkleR = new THREE.Mesh(sparkleGeo, eyeSparkleMat);
+  sparkleR.position.set(0.039, 0.029, 0.063);
+  headGroup.add(sparkleR);
+
+  // Floppy Domestic Dog Ears (Articulated for twitching & bouncing)
+  const earLGroup = new THREE.Group();
+  earLGroup.position.set(-0.056, 0.042, -0.005);
+  headGroup.add(earLGroup);
+
+  const earLMesh = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.022, 0.075, 8, 12),
+    coatDarkMat
+  );
+  earLMesh.scale.set(0.55, 1.0, 1.0);
+  earLMesh.position.set(-0.012, -0.045, 0.015);
+  earLMesh.rotation.set(0.18, 0, -0.32);
+  earLMesh.castShadow = true;
+  earLGroup.add(earLMesh);
+
+  const earRGroup = new THREE.Group();
+  earRGroup.position.set(0.056, 0.042, -0.005);
+  headGroup.add(earRGroup);
+
+  const earRMesh = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.022, 0.075, 8, 12),
+    coatDarkMat
+  );
+  earRMesh.scale.set(0.55, 1.0, 1.0);
+  earRMesh.position.set(0.012, -0.045, 0.015);
+  earRMesh.rotation.set(0.18, 0, 0.32);
+  earRMesh.castShadow = true;
+  earRGroup.add(earRMesh);
+
+  // 3. Articulated Wagging Tail (Pivot at rump: Z = -0.19m, Y = +0.055m)
+  const tailGroup = new THREE.Group();
+  tailGroup.position.set(0, 0.055, -0.19);
+  bodyGroup.add(tailGroup);
+
+  // Base Segment
+  const tailBase = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.016, 0.012, 0.07, 10),
+    coatMainMat
+  );
+  tailBase.position.set(0, 0.028, -0.035);
+  tailBase.rotation.x = -Math.PI * 0.28;
+  tailBase.castShadow = true;
+  tailGroup.add(tailBase);
+
+  // Mid Segment
+  const tailMid = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.012, 0.008, 0.07, 10),
+    coatMainMat
+  );
+  tailMid.position.set(0, 0.072, -0.065);
+  tailMid.rotation.x = -Math.PI * 0.16;
+  tailMid.castShadow = true;
+  tailGroup.add(tailMid);
+
+  // Fluffy Tail Tip
+  const tailTip = new THREE.Mesh(
+    new THREE.SphereGeometry(0.014, 10, 10),
+    coatChestMat
+  );
+  tailTip.scale.set(0.85, 1.3, 0.85);
+  tailTip.position.set(0, 0.11, -0.075);
+  tailTip.castShadow = true;
+  tailGroup.add(tailTip);
+
+  // 4. Four Articulated Legs & Grounded Paws (FL, FR, RL, RR)
+  // FL = Index 0, FR = Index 1, RL = Index 2, RR = Index 3
+  const legConfigs = [
+    { name: 'FL', x: -0.075, z: 0.10, isFront: true,  isLeft: true },
+    { name: 'FR', x: 0.075,  z: 0.10, isFront: true,  isLeft: false },
+    { name: 'RL', x: -0.075, z: -0.14, isFront: false, isLeft: true },
+    { name: 'RR', x: 0.075,  z: -0.14, isFront: false, isLeft: false },
   ];
 
   const legs: RobotPetHierarchy['legs'] = [];
 
-  legOffsets.forEach((cfg) => {
-    // Hip joint group attached to body
+  legConfigs.forEach((cfg) => {
+    // Hip / Shoulder Pivot attached to body
     const hip = new THREE.Group();
     hip.position.set(cfg.x, 0, cfg.z);
     bodyGroup.add(hip);
 
-    // Hip casing cylinder
-    const hipCap = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.022, 0.022, 0.03, 16),
-      cfg.isLeft ? spiderRedMat : spiderBlueMat
-    );
-    hipCap.rotation.z = Math.PI / 2;
-    hip.add(hipCap);
-
-    // Upper leg group (Shoulder Pitch)
+    // Upper Leg (Shoulder/Thigh)
     const upper = new THREE.Group();
     hip.add(upper);
 
-    // Upper leg bone (Length 0.12m)
-    const upperBone = new THREE.Mesh(new THREE.CapsuleGeometry(0.012, 0.09, 8, 12), chassisMat);
-    upperBone.position.set(0, -0.055, 0);
-    upperBone.castShadow = true;
-    upper.add(upperBone);
+    if (cfg.isFront) {
+      // Front Shoulder / Upper Arm
+      const shoulderMesh = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.022, 0.08, 8, 10),
+        coatMainMat
+      );
+      shoulderMesh.position.set(0, -0.055, 0);
+      shoulderMesh.castShadow = true;
+      upper.add(shoulderMesh);
+    } else {
+      // Rear Muscular Thigh
+      const thighMesh = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.030, 0.08, 10, 12),
+        coatMainMat
+      );
+      thighMesh.scale.set(0.9, 1.1, 1.25);
+      thighMesh.position.set(0, -0.055, -0.01);
+      thighMesh.castShadow = true;
+      upper.add(thighMesh);
+    }
 
-    // Knee joint group
+    // Knee / Elbow Pivot
     const knee = new THREE.Group();
-    knee.position.set(0, -0.11, 0);
+    knee.position.set(0, -0.115, 0);
     upper.add(knee);
 
-    const kneeCap = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.025, 12), jointMat);
-    kneeCap.rotation.z = Math.PI / 2;
-    knee.add(kneeCap);
+    // Lower Leg (Forearm / Shank)
+    const lowerLeg = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.016, 0.085, 8, 10),
+      coatMainMat
+    );
+    lowerLeg.position.set(0, -0.055, 0);
+    lowerLeg.castShadow = true;
+    knee.add(lowerLeg);
 
-    // Lower leg bone (Length 0.11m)
-    const lowerBone = new THREE.Mesh(new THREE.CapsuleGeometry(0.010, 0.085, 8, 12), chassisMat);
-    lowerBone.position.set(0, -0.055, 0);
-    lowerBone.castShadow = true;
-    lowerBone.add(kneeCap);
+    // Padded Paw Group (Lands precisely at floor level Y = 0)
+    const pawGroup = new THREE.Group();
+    pawGroup.position.set(0, -0.115, 0);
+    knee.add(pawGroup);
 
-    // Foot pad
-    const foot = new THREE.Mesh(new THREE.SphereGeometry(0.016, 12, 12), footRubberMat);
-    foot.position.set(0, -0.11, 0);
-    foot.castShadow = true;
-    knee.add(foot);
+    // Main Paw Top
+    const pawMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.042, 0.018, 0.052),
+      coatMainMat
+    );
+    pawMesh.position.set(0, -0.009, 0.008);
+    pawMesh.castShadow = true;
+    pawGroup.add(pawMesh);
 
-    legs.push({ hip, upper, knee, foot });
+    // Soft Front Toe Bulges (Cute puppy paws)
+    const toeGeo = new THREE.SphereGeometry(0.008, 8, 8);
+    const toeOffsets = [-0.013, -0.004, 0.004, 0.013];
+    toeOffsets.forEach(tx => {
+      const toe = new THREE.Mesh(toeGeo, coatChestMat);
+      toe.scale.set(0.8, 0.8, 1.2);
+      toe.position.set(tx, -0.009, 0.030);
+      pawGroup.add(toe);
+    });
+
+    // Dark Paw Pads on Ground
+    const padMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.038, 0.003, 0.042),
+      pawPadMat
+    );
+    padMesh.position.set(0, -0.018, 0.008);
+    pawGroup.add(padMesh);
+
+    // Cast the paw as foot mesh for hierarchy compatibility
+    legs.push({ hip, upper, knee, foot: pawMesh });
   });
 
-  // Soft contact shadow underneath pet
+  // Soft contact shadow underneath pet on the floor
   const shadowDecal = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.32, 0.44),
+    new THREE.PlaneGeometry(0.38, 0.52),
     new THREE.MeshBasicMaterial({
       color: 0x000000,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.38,
       depthWrite: false,
     })
   );
@@ -1172,6 +1448,11 @@ export function createRobotPet(): RobotPetHierarchy {
     rootGroup,
     bodyGroup,
     headGroup,
+    snoutGroup,
+    tailGroup,
+    earLGroup,
+    earRGroup,
+    tongueMesh,
     eyeL,
     eyeR,
     legs,
@@ -1250,6 +1531,8 @@ export function updateRobotPetKinematics(
 
   let activity: RobotPetTelemetry['activity'] = 'WALKING';
   let targetFocus = targetWp.targetFocus;
+  // Local forward is +Z. When rotation.y = headingRad:
+  // Heading angle points directly from current position towards waypoint!
   const targetHeading = Math.atan2(dx, dz);
 
   // 1. Navigation / State Machine
@@ -1257,17 +1540,25 @@ export function updateRobotPetKinematics(
     // Pure stationary idle
     activity = 'IDLE';
     state.pauseTimerSec += deltaSec;
-    // Gentle head scanning
-    pet.headGroup.rotation.y = Math.sin(state.pauseTimerSec * 1.5) * 0.35;
-    pet.headGroup.rotation.x = Math.sin(state.pauseTimerSec * 0.8) * 0.1;
-  } else if (dist < 0.18) {
+    // Gentle head scanning & breathing
+    pet.headGroup.rotation.y = Math.sin(state.pauseTimerSec * 1.5) * 0.28;
+    pet.headGroup.rotation.x = Math.sin(state.pauseTimerSec * 0.8) * 0.08;
+    pet.headGroup.rotation.z = Math.sin(state.pauseTimerSec * 1.2) * 0.08; // cute puppy tilt
+    if (pet.snoutGroup) {
+      pet.snoutGroup.position.y = -0.005 + Math.abs(Math.sin(state.pauseTimerSec * 6)) * 0.002;
+    }
+    if (pet.earLGroup) pet.earLGroup.rotation.z = -0.32 + Math.sin(state.pauseTimerSec * 3) * 0.04;
+    if (pet.earRGroup) pet.earRGroup.rotation.z = 0.32 - Math.sin(state.pauseTimerSec * 3) * 0.04;
+  } else if (dist < 0.22) {
     // Arrived at waypoint: execute waypoint pause action if applicable
     if (targetWp.action === 'LOOK_RIGHT_ARM') {
       activity = 'SCANNING';
       state.pauseTimerSec += deltaSec;
-      // Turn head toward Right SO-101 base: (+0.38, 0.75, 0.42)
-      pet.headGroup.rotation.y = -Math.PI / 3 + Math.sin(state.pauseTimerSec * 2) * 0.1;
-      pet.headGroup.rotation.x = -0.25;
+      // Turn head toward Right SO-101 base
+      pet.headGroup.rotation.y = -Math.PI / 4 + Math.sin(state.pauseTimerSec * 2.0) * 0.08;
+      pet.headGroup.rotation.x = -0.15 + Math.sin(state.pauseTimerSec * 3.5) * 0.03;
+      pet.headGroup.rotation.z = 0.12; // curious puppy tilt
+      if (pet.snoutGroup) pet.snoutGroup.position.y = -0.005 + Math.abs(Math.sin(state.pauseTimerSec * 8)) * 0.002;
       if (state.pauseTimerSec > 3.0) {
         state.pauseTimerSec = 0;
         state.currentWaypointIdx = (state.currentWaypointIdx + 1) % PET_PATROL_WAYPOINTS.length;
@@ -1275,9 +1566,11 @@ export function updateRobotPetKinematics(
     } else if (targetWp.action === 'LOOK_CANDLE') {
       activity = 'SCANNING';
       state.pauseTimerSec += deltaSec;
-      // Turn head up toward center candle flame (0, 0.95, 0)
-      pet.headGroup.rotation.y = Math.sin(state.pauseTimerSec * 1.2) * 0.15;
-      pet.headGroup.rotation.x = -0.4;
+      // Turn head up toward center candle flame
+      pet.headGroup.rotation.y = Math.sin(state.pauseTimerSec * 1.5) * 0.12;
+      pet.headGroup.rotation.x = -0.26 + Math.sin(state.pauseTimerSec * 2.5) * 0.02;
+      pet.headGroup.rotation.z = Math.sin(state.pauseTimerSec * 1.0) * 0.06;
+      if (pet.snoutGroup) pet.snoutGroup.position.y = -0.005 + Math.abs(Math.sin(state.pauseTimerSec * 6)) * 0.002;
       if (state.pauseTimerSec > 2.5) {
         state.pauseTimerSec = 0;
         state.currentWaypointIdx = (state.currentWaypointIdx + 1) % PET_PATROL_WAYPOINTS.length;
@@ -1285,9 +1578,11 @@ export function updateRobotPetKinematics(
     } else if (targetWp.action === 'LOOK_LEFT_ARM') {
       activity = 'SCANNING';
       state.pauseTimerSec += deltaSec;
-      // Turn head toward Left SO-101 base: (-0.38, 0.75, 0.42)
-      pet.headGroup.rotation.y = Math.PI / 3 + Math.sin(state.pauseTimerSec * 2) * 0.1;
-      pet.headGroup.rotation.x = -0.25;
+      // Turn head toward Left SO-101 base
+      pet.headGroup.rotation.y = Math.PI / 4 + Math.sin(state.pauseTimerSec * 2.0) * 0.08;
+      pet.headGroup.rotation.x = -0.15 + Math.sin(state.pauseTimerSec * 3.5) * 0.03;
+      pet.headGroup.rotation.z = -0.12;
+      if (pet.snoutGroup) pet.snoutGroup.position.y = -0.005 + Math.abs(Math.sin(state.pauseTimerSec * 8)) * 0.002;
       if (state.pauseTimerSec > 3.0) {
         state.pauseTimerSec = 0;
         state.currentWaypointIdx = (state.currentWaypointIdx + 1) % PET_PATROL_WAYPOINTS.length;
@@ -1301,49 +1596,61 @@ export function updateRobotPetKinematics(
     activity = 'WALKING';
     state.walkTimerSec += deltaSec;
 
-    // Smooth heading rotation
+    // Smooth heading rotation with shortest-arc interpolation
     let angleDiff = targetHeading - state.headingRad;
     while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-    state.headingRad += angleDiff * Math.min(1, deltaSec * 3.5);
 
-    // Forward translation
-    const speed = 0.44; // 0.44 m/s (natural realistic quadruped trot)
+    const maxTurnRate = 3.2; // rad/s smooth natural turning without snap
+    state.headingRad += angleDiff * Math.min(1.0, deltaSec * maxTurnRate);
+
+    // Natural Turn Deceleration: slow slightly into sharp turns so dog curves naturally
+    const turnAlignment = Math.max(0.35, Math.cos(angleDiff));
+    const baseSpeed = 0.42; // 0.42 m/s casual friendly domestic pet walk
+    const speed = baseSpeed * turnAlignment;
+
+    // Forward translation in the exact direction the dog faces (+Z in local space)
     state.pos.x += Math.sin(state.headingRad) * speed * deltaSec;
     state.pos.z += Math.cos(state.headingRad) * speed * deltaSec;
 
-    // Look in direction of travel
-    pet.headGroup.rotation.y = Math.sin(state.walkTimerSec * 4) * 0.08;
-    pet.headGroup.rotation.x = 0;
+    // Head looks forward along direction of travel with gentle rhythm bob
+    pet.headGroup.rotation.y = Math.sin(state.walkTimerSec * 3.0) * 0.06;
+    pet.headGroup.rotation.x = Math.sin(state.walkTimerSec * 5.2) * 0.03;
+    pet.headGroup.rotation.z = Math.sin(state.walkTimerSec * 2.6) * 0.03;
+    if (pet.snoutGroup) pet.snoutGroup.position.y = -0.005;
   }
 
   // Position root group on floor
   pet.rootGroup.position.set(state.pos.x, 0, state.pos.z);
   pet.rootGroup.rotation.y = state.headingRad;
 
-  // 2. Articulated Alternating Quadruped Gait Kinematics
+  // 2. Articulated Quadruped Diagonal Trot Gait Kinematics
   if (activity === 'WALKING') {
-    const gaitFreq = 3.6; // Stride cycles per second
-    const phase = (state.walkTimerSec * gaitFreq) % 1.0;
-    const isPhaseA = phase < 0.5;
-    const subPhase = isPhaseA ? phase * 2 : (phase - 0.5) * 2;
+    const gaitFreq = 2.6; // Stride cycles per second (natural casual domestic walk)
+    const cycle = (state.walkTimerSec * gaitFreq) % 1.0;
+    const isPhaseA = cycle < 0.5;
+    const subPhase = isPhaseA ? cycle * 2.0 : (cycle - 0.5) * 2.0;
 
-    // Vertical body bobbing & gentle roll
-    pet.bodyGroup.position.y = 0.22 + Math.abs(Math.sin(phase * Math.PI * 2)) * 0.014;
-    pet.bodyGroup.rotation.z = Math.sin(phase * Math.PI * 2) * 0.035;
+    // Vertical body bounce (two bounces per full cycle) & gentle hip roll
+    pet.bodyGroup.position.y = 0.245 + Math.abs(Math.sin(cycle * Math.PI * 2)) * 0.012;
+    pet.bodyGroup.rotation.z = Math.sin(cycle * Math.PI * 2) * 0.026;
+    pet.bodyGroup.rotation.y = -Math.sin(cycle * Math.PI * 2) * 0.018;
 
-    // Alternating Diagonal Legs:
+    // Diagonal Trot Leg Movements:
     // Pair A: Front-Left (0) & Rear-Right (3)
     // Pair B: Front-Right (1) & Rear-Left (2)
-    const strideAngle = 0.45; // Max leg swing angle (rad)
+    const maxStride = 0.36; // leg pitch swing amplitude (rad)
 
-    // Swing vs Stance calculations
-    const swingPitch = -strideAngle + subPhase * (2 * strideAngle);
-    const stancePitch = strideAngle - subPhase * (2 * strideAngle);
-    const swingKnee = Math.sin(subPhase * Math.PI) * 0.65; // knee flex during swing
+    // Swing Phase: Leg swings forward towards +Z, knee lifts paw off the floor
+    const swingPitch = -maxStride + subPhase * (2 * maxStride);
+    const swingKnee = Math.sin(subPhase * Math.PI) * 0.38; // natural knee lift
+
+    // Stance Phase: Leg pushes backward towards -Z, paw grounded
+    const stancePitch = maxStride - subPhase * (2 * maxStride);
+    const stanceKnee = 0.03; // natural stance bend
 
     if (isPhaseA) {
-      // Pair A swings, Pair B stands
+      // Pair A swings forward, Pair B stands
       // FL (0)
       pet.legs[0].upper.rotation.x = swingPitch;
       pet.legs[0].knee.rotation.x = swingKnee;
@@ -1353,12 +1660,12 @@ export function updateRobotPetKinematics(
 
       // FR (1)
       pet.legs[1].upper.rotation.x = stancePitch;
-      pet.legs[1].knee.rotation.x = 0.05;
+      pet.legs[1].knee.rotation.x = stanceKnee;
       // RL (2)
       pet.legs[2].upper.rotation.x = stancePitch;
-      pet.legs[2].knee.rotation.x = 0.05;
+      pet.legs[2].knee.rotation.x = stanceKnee;
     } else {
-      // Pair B swings, Pair A stands
+      // Pair B swings forward, Pair A stands
       // FR (1)
       pet.legs[1].upper.rotation.x = swingPitch;
       pet.legs[1].knee.rotation.x = swingKnee;
@@ -1368,27 +1675,41 @@ export function updateRobotPetKinematics(
 
       // FL (0)
       pet.legs[0].upper.rotation.x = stancePitch;
-      pet.legs[0].knee.rotation.x = 0.05;
+      pet.legs[0].knee.rotation.x = stanceKnee;
       // RR (3)
-      pet.legs[3].upper.rotation.x = swingPitch;
-      pet.legs[3].knee.rotation.x = 0.05;
+      pet.legs[3].upper.rotation.x = stancePitch;
+      pet.legs[3].knee.rotation.x = stanceKnee;
     }
+
+    // Joyful, energetic tail wagging during walk
+    if (pet.tailGroup) {
+      pet.tailGroup.rotation.y = Math.sin(state.walkTimerSec * 8.0) * 0.42;
+      pet.tailGroup.rotation.z = Math.cos(state.walkTimerSec * 8.0) * 0.10;
+    }
+
+    // Floppy ears bouncing with strides
+    if (pet.earLGroup) pet.earLGroup.rotation.z = -0.32 + Math.sin(cycle * Math.PI * 2) * 0.07;
+    if (pet.earRGroup) pet.earRGroup.rotation.z = 0.32 - Math.sin(cycle * Math.PI * 2) * 0.07;
+
   } else {
-    // Idle standing posture
-    pet.bodyGroup.position.y = 0.22 + Math.sin(state.pauseTimerSec * 2) * 0.003;
-    pet.bodyGroup.rotation.z = 0;
+    // Idle standing posture: natural subtle breathing
+    pet.bodyGroup.position.y = 0.245 + Math.sin(state.pauseTimerSec * 2.0) * 0.003;
+    pet.bodyGroup.rotation.z = THREE.MathUtils.lerp(pet.bodyGroup.rotation.z, 0, 0.1);
+    pet.bodyGroup.rotation.y = THREE.MathUtils.lerp(pet.bodyGroup.rotation.y, 0, 0.1);
+
     pet.legs.forEach(leg => {
-      leg.upper.rotation.x = THREE.MathUtils.lerp(leg.upper.rotation.x, 0.05, 0.1);
+      leg.upper.rotation.x = THREE.MathUtils.lerp(leg.upper.rotation.x, 0.03, 0.1);
       leg.knee.rotation.x = THREE.MathUtils.lerp(leg.knee.rotation.x, 0.02, 0.1);
     });
+
+    // Friendly gentle tail swish during idle
+    if (pet.tailGroup) {
+      pet.tailGroup.rotation.y = Math.sin(state.pauseTimerSec * 2.8) * 0.24;
+      pet.tailGroup.rotation.z = 0;
+    }
   }
 
-  // 3. Eye Glow Pulse
-  const eyeIntensity = 0.8 + Math.sin(performance.now() * 0.006) * 0.2;
-  (pet.eyeL.material as THREE.MeshBasicMaterial).color.setRGB(0, 0.94 * eyeIntensity, eyeIntensity);
-  (pet.eyeR.material as THREE.MeshBasicMaterial).color.setRGB(0, 0.94 * eyeIntensity, eyeIntensity);
-
-  // 4. Report Telemetry to UI
+  // 3. Report Telemetry to UI
   if (onTelemetry) {
     onTelemetry({
       status: 'ONLINE',

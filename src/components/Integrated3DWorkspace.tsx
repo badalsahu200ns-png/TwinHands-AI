@@ -25,11 +25,12 @@
  * └──────────────┴───────────────────────────────────┴───────────┘
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Play, Pause, SkipForward, RotateCcw, Mic, MicOff, Send, 
   CheckCircle2, AlertTriangle, Shield, Cpu, Gauge, Eye, Camera, 
-  Sparkles, Layers, Sliders, ChevronRight, Activity, Zap, Check, Bot
+  Sparkles, Layers, Sliders, ChevronRight, ChevronLeft, Activity, Zap, Check, Bot,
+  Pin, PinOff, X, Maximize2, Minimize2, Flame
 } from 'lucide-react';
 import { 
   TableLayoutPlan, 
@@ -102,6 +103,75 @@ export const Integrated3DWorkspace: React.FC<Integrated3DWorkspaceProps> = ({
     targetFocus: 'Centerpiece candle & SO-101 dual arms',
   });
 
+  // Slide-out edge panels & immersive fullscreen state
+  const [isLeftOpen, setIsLeftOpen] = useState(false);
+  const [isLeftPinned, setIsLeftPinned] = useState(false);
+  const [isRightOpen, setIsRightOpen] = useState(false);
+  const [isRightPinned, setIsRightPinned] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const leftTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const rightTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
+
+  const handleLeftEnter = () => {
+    if (leftTimerRef.current) clearTimeout(leftTimerRef.current);
+    setIsLeftOpen(true);
+  };
+
+  const handleLeftLeave = () => {
+    if (isLeftPinned) return;
+    if (leftTimerRef.current) clearTimeout(leftTimerRef.current);
+    leftTimerRef.current = setTimeout(() => {
+      setIsLeftOpen(false);
+    }, 350);
+  };
+
+  const handleRightEnter = () => {
+    if (rightTimerRef.current) clearTimeout(rightTimerRef.current);
+    setIsRightOpen(true);
+  };
+
+  const handleRightLeave = () => {
+    if (isRightPinned) return;
+    if (rightTimerRef.current) clearTimeout(rightTimerRef.current);
+    rightTimerRef.current = setTimeout(() => {
+      setIsRightOpen(false);
+    }, 350);
+  };
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      if (workspaceRef.current?.requestFullscreen) {
+        workspaceRef.current.requestFullscreen().catch(err => {
+          console.warn('Fullscreen request failed:', err);
+          setIsFullscreen(prev => !prev);
+        });
+      } else {
+        setIsFullscreen(prev => !prev);
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(err => {
+          console.warn('Exit fullscreen failed:', err);
+          setIsFullscreen(false);
+        });
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      if (leftTimerRef.current) clearTimeout(leftTimerRef.current);
+      if (rightTimerRef.current) clearTimeout(rightTimerRef.current);
+    };
+  }, []);
+
   // Quick Command Presets (Spider-Man Restaurant Automation Tasks)
   const quickPresets = [
     { label: 'Dinner for 2', cmd: 'Prepare dinner for 2' },
@@ -166,21 +236,28 @@ export const Integrated3DWorkspace: React.FC<Integrated3DWorkspaceProps> = ({
   const addSpoonsDone = completedItems.filter(i => i.type === 'additional_spoon').length;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] min-h-[720px] w-full bg-[#070a12] rounded-2xl border border-slate-800 shadow-2xl overflow-hidden relative font-sans">
+    <div 
+      ref={workspaceRef}
+      className={`flex flex-col w-full bg-[#070a12] rounded-2xl border border-slate-800 shadow-2xl overflow-hidden relative font-sans select-none transition-all duration-300 ${
+        isFullscreen 
+          ? 'fixed inset-0 z-50 rounded-none border-none h-screen' 
+          : 'h-[calc(100vh-130px)] min-h-[660px]'
+      }`}
+    >
       
       {/* 1. TOP STATUS & SIMULATION CONTROL BAR */}
-      <div className="h-14 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 px-4 flex items-center justify-between z-20 shrink-0">
+      <div className="h-13 bg-slate-950/95 backdrop-blur-md border-b border-slate-800/80 px-4 flex items-center justify-between z-20 shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-rose-600 to-blue-600 flex items-center justify-center shadow-md shadow-rose-600/20">
-              <Zap className="w-4 h-4 text-white" />
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-rose-600 to-blue-600 p-0.5 flex items-center justify-center shadow-md shadow-rose-600/20 overflow-hidden">
+              <img src="/app-icon.png" alt="TwinHands-AI Icon" className="w-full h-full object-cover rounded-[6px]" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <span className="font-extrabold text-sm tracking-wider text-white">TWINHANDS-AI</span>
                 <span className="text-[10px] font-mono bg-cyan-950 text-cyan-400 px-1.5 py-0.5 rounded border border-cyan-800/50">v2.4</span>
               </div>
-              <p className="text-[10px] text-slate-400 font-mono hidden sm:block">
+              <p className="text-[10px] text-slate-400 font-mono hidden md:block">
                 Bimanual Physical AI · MuJoCo 3.X Simulation
               </p>
             </div>
@@ -188,18 +265,47 @@ export const Integrated3DWorkspace: React.FC<Integrated3DWorkspaceProps> = ({
 
           <div className="h-4 w-px bg-slate-800 mx-1 hidden sm:block" />
 
-          {/* Connection Status */}
-          <div className="hidden sm:flex items-center gap-2 bg-emerald-950/60 text-emerald-400 border border-emerald-800/50 px-2.5 py-1 rounded-full text-xs font-mono">
-            <span className="relative flex h-2 w-2">
+          {/* Prominent SIMULATION CONNECTED Indicator */}
+          <div className="flex items-center gap-2 bg-emerald-950/70 text-emerald-400 border border-emerald-500/40 px-3 py-1 rounded-full text-xs font-mono shadow-sm shadow-emerald-950/50">
+            <span className="relative flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
             </span>
-            <span>SIMULATION CONNECTED</span>
+            <span className="font-bold tracking-wider">SIMULATION CONNECTED</span>
+          </div>
+
+          {/* Live Telemetry Pill */}
+          <div className="hidden xl:flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-[11px] font-mono text-slate-400">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+            <span>60 Hz Real-Time Telemetry</span>
           </div>
         </div>
 
         {/* Global Sim Controls */}
         <div className="flex items-center gap-2">
+          {/* Arm Selector Quick Toggle */}
+          <div className="hidden lg:flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg p-0.5 text-xs font-mono">
+            <span className="text-[10px] text-slate-400 px-1.5">Arm:</span>
+            <button
+              onClick={() => setSelectedArm(selectedArm === 'left' ? null : 'left')}
+              className={`px-2 py-0.5 rounded transition-all flex items-center gap-1 ${
+                selectedArm === 'left' ? 'bg-rose-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+              <span>🔴 Left</span>
+            </button>
+            <button
+              onClick={() => setSelectedArm(selectedArm === 'right' ? null : 'right')}
+              className={`px-2 py-0.5 rounded transition-all flex items-center gap-1 ${
+                selectedArm === 'right' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+              <span>🔵 Right</span>
+            </button>
+          </div>
+
           {/* Speed Selector */}
           <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-0.5 text-xs">
             {[1, 2, 5].map(spd => (
@@ -256,14 +362,174 @@ export const Integrated3DWorkspace: React.FC<Integrated3DWorkspaceProps> = ({
             <Shield className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">E-STOP</span>
           </button>
+
+          {/* Fullscreen Toggle */}
+          <button
+            onClick={toggleFullscreen}
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
+            title={isFullscreen ? 'Exit Fullscreen' : 'Enter Immersive Fullscreen'}
+          >
+            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5 text-cyan-400" /> : <Maximize2 className="w-3.5 h-3.5" />}
+          </button>
         </div>
       </div>
 
-      {/* 2. THREE-PANE MAIN WORKSPACE */}
-      <div className="flex-1 flex overflow-hidden relative">
-        
-        {/* LEFT PANE: AI COMMAND & FLOATING TASK PANEL */}
-        <div className="w-80 max-w-[320px] bg-slate-950/80 backdrop-blur-md border-r border-slate-800/80 flex flex-col p-3 gap-3 z-10 shrink-0 overflow-y-auto">
+      {/* 2. IMMERSIVE RESTAURANT SIMULATION VIEWPORT */}
+      <div className="flex-1 w-full h-full relative overflow-hidden bg-[#080c14]">
+
+        {/* A. 3D WebGL Simulation Canvas (DOMINANT VISUAL ELEMENT - 100% UNCONSTRAINED VIEW) */}
+        <div className="absolute inset-0 w-full h-full">
+          <ThreeWorkspace3D
+            plan={plan}
+            leftArm={leftArm}
+            rightArm={rightArm}
+            activeItem={activeItem}
+            completedItems={completedItems}
+            isPlaying={isPlaying}
+            simSpeed={simSpeed}
+            selectedArm={selectedArm}
+            onSelectArm={setSelectedArm}
+            cameraPreset={cameraPreset}
+            onCameraPresetChange={setCameraPreset}
+            petActive={petActive}
+            petMode={petMode}
+            onPetTelemetryChange={setPetTelemetry}
+            lightingPreset={lightingPreset}
+            hideEmbeddedHUD={true}
+          />
+        </div>
+
+        {/* B. Floating Camera & Lighting Rig HUD (Top Center) */}
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-15 bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-800/80 shadow-2xl flex items-center gap-1.5 overflow-x-auto max-w-[95%] pointer-events-auto">
+          {/* Camera Presets */}
+          <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400 pr-1 border-r border-slate-800 mr-0.5 hidden sm:flex">
+            <Eye className="w-3 h-3 text-cyan-400" />
+            <span>CAM:</span>
+          </div>
+          {(
+            [
+              { id: 'CINEMATIC', label: 'Cinematic' },
+              { id: 'TABLE_VIEW', label: 'Table' },
+              { id: 'ROBOT_VIEW', label: 'Dual Arms' },
+              { id: 'DINNER_VIEW', label: 'Dinner' },
+              { id: 'INSPECTOR', label: 'Top' },
+              { id: 'PET_CAM', label: 'Pet Cam 🐾' },
+              { id: 'ORBIT', label: 'Free Orbit' },
+            ] as const
+          ).map(cam => (
+            <button
+              key={cam.id}
+              onClick={() => setCameraPreset(cam.id)}
+              className={`px-2 py-0.5 rounded-lg text-[11px] font-mono font-semibold transition-all whitespace-nowrap ${
+                cameraPreset === cam.id
+                  ? 'bg-gradient-to-r from-rose-600 to-blue-600 text-white shadow-md shadow-rose-600/20 font-bold'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              {cam.label}
+            </button>
+          ))}
+
+          <div className="h-4 w-px bg-slate-700/80 mx-1 hidden md:block" />
+
+          {/* Lighting Rig Presets */}
+          <div className="flex items-center gap-1 text-[10px] font-mono text-amber-400 pr-1 border-r border-slate-800 mr-0.5 hidden md:flex">
+            <Sparkles className="w-3 h-3 text-amber-400" />
+            <span>LIGHT:</span>
+          </div>
+          {(
+            [
+              { id: 'CINEMATIC', label: '🎬 Cinematic', tip: 'Spider-Man warm dining + neon rims' },
+              { id: 'RESTAURANT', label: '🍷 Restaurant', tip: 'Warm intimate dining ambience' },
+              { id: 'ROBOT_LAB', label: '🤖 Robot Lab', tip: 'High-visibility technical studio' },
+              { id: 'SPIDER_NIGHT', label: '🕷️ Spider Night', tip: 'Dramatic high-contrast superhero noir' },
+            ] as const
+          ).map(preset => (
+            <button
+              key={preset.id}
+              onClick={() => setLightingPreset(preset.id)}
+              title={preset.tip}
+              className={`px-2 py-0.5 rounded-lg text-[11px] font-mono font-semibold transition-all whitespace-nowrap ${
+                lightingPreset === preset.id
+                  ? 'bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-md shadow-amber-500/20 font-bold'
+                  : 'text-slate-400 hover:text-amber-200 hover:bg-slate-800/60'
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
+        {/* C. LEFT EDGE HOVER ZONE & SUBTLE DISCOVERABILITY TAB INDICATOR */}
+        <div
+          onMouseEnter={handleLeftEnter}
+          className="absolute left-0 top-0 bottom-0 w-8 z-20 cursor-pointer"
+          title="Hover left edge to open Dinner Table Configuration"
+        />
+        <div
+          onMouseEnter={handleLeftEnter}
+          onClick={handleLeftEnter}
+          className={`absolute left-0 top-1/2 -translate-y-1/2 z-20 transition-all duration-300 cursor-pointer ${
+            isLeftOpen || isLeftPinned ? 'opacity-0 pointer-events-none -translate-x-full' : 'opacity-90 hover:opacity-100 translate-x-0'
+          }`}
+        >
+          <div className="flex items-center gap-1.5 bg-slate-950/85 backdrop-blur-md border-y border-r border-cyan-500/40 hover:border-cyan-400 py-3.5 px-2 rounded-r-xl text-cyan-300 font-mono shadow-xl shadow-cyan-950/50 hover:shadow-cyan-500/30 transition-all group">
+            <Sliders className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
+            <span className="[writing-mode:vertical-rl] rotate-180 tracking-widest text-[9px] font-bold uppercase text-slate-300 group-hover:text-cyan-200">
+              Dinner Config
+            </span>
+            <ChevronRight className="w-3 h-3 text-cyan-400 animate-pulse" />
+          </div>
+        </div>
+
+        {/* D. LEFT SLIDE-OUT PANEL: DINNER TABLE CONFIGURATION */}
+        <aside
+          onMouseEnter={handleLeftEnter}
+          onMouseLeave={handleLeftLeave}
+          className={`absolute left-0 top-0 bottom-0 z-30 w-80 sm:w-88 max-w-[calc(100vw-3.5rem)] bg-slate-950/95 backdrop-blur-2xl border-r border-slate-800/90 shadow-2xl shadow-cyan-950/60 flex flex-col p-3 gap-3 transition-transform duration-300 ease-in-out overflow-y-auto ${
+            isLeftOpen || isLeftPinned ? 'translate-x-0 pointer-events-auto' : '-translate-x-full pointer-events-none'
+          }`}
+        >
+          {/* Header with Title, Guest Count, Pin & Close */}
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800/80 shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-lg bg-cyan-950/90 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
+                <Sliders className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-white font-mono tracking-wider block">
+                  DINNER TABLE CONFIGURATION
+                </span>
+                <span className="text-[10px] font-mono text-cyan-400">
+                  {people} {people === 1 ? 'Person Setting' : 'People Settings'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setIsLeftPinned(!isLeftPinned)}
+                className={`p-1.5 rounded-lg border text-xs transition-all ${
+                  isLeftPinned
+                    ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-sm shadow-cyan-500/30'
+                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                }`}
+                title={isLeftPinned ? 'Pinned open (Click to unpin)' : 'Pin panel open'}
+              >
+                {isLeftPinned ? <Pin className="w-3.5 h-3.5 fill-cyan-400 text-cyan-400" /> : <Pin className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                onClick={() => {
+                  setIsLeftPinned(false);
+                  setIsLeftOpen(false);
+                }}
+                className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 transition-all"
+                title="Minimize Panel"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
           
           {/* DINNER TABLE CONFIGURATION SELECTOR (Section 12) */}
           <div className="bg-slate-900/90 rounded-xl p-3 border border-slate-800/80 shadow-lg space-y-2">
@@ -318,9 +584,9 @@ export const Integrated3DWorkspace: React.FC<Integrated3DWorkspaceProps> = ({
           {/* AUTONOMOUS ROBOT COMPANION CONTROLLER */}
           <div className="bg-slate-900/90 rounded-xl p-3 border border-slate-800/80 shadow-lg space-y-2">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-400 font-mono">
-                <Bot className="w-3.5 h-3.5" />
-                <span>ROBOT PET COMPANION</span>
+              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400 font-mono">
+                <span className="text-sm">🐕</span>
+                <span>PET DOG COMPANION</span>
               </div>
               <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
                 petActive 
@@ -635,100 +901,77 @@ export const Integrated3DWorkspace: React.FC<Integrated3DWorkspaceProps> = ({
               </div>
             )}
           </div>
-        </div>
+        </aside>
 
-        {/* CENTER PANE: FULL-SCREEN INTERACTIVE 3D TABLE WORKSPACE */}
-        <div className="flex-1 h-full relative bg-[#080c14]">
-          {/* Floating Camera & Lighting Rig HUD */}
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 bg-slate-950/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-800/80 shadow-2xl flex items-center gap-1.5 overflow-x-auto max-w-[95%]">
-            {/* Camera Presets */}
-            <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400 pr-1 border-r border-slate-800 mr-0.5 hidden sm:flex">
-              <Eye className="w-3 h-3 text-cyan-400" />
-              <span>CAM:</span>
-            </div>
-            {(
-              [
-                { id: 'CINEMATIC', label: 'Cinematic' },
-                { id: 'TABLE_VIEW', label: 'Table' },
-                { id: 'ROBOT_VIEW', label: 'Dual Arms' },
-                { id: 'DINNER_VIEW', label: 'Dinner' },
-                { id: 'INSPECTOR', label: 'Top' },
-                { id: 'PET_CAM', label: 'Pet Cam 🐾' },
-                { id: 'ORBIT', label: 'Free Orbit' },
-              ] as const
-            ).map(cam => (
-              <button
-                key={cam.id}
-                onClick={() => setCameraPreset(cam.id)}
-                className={`px-2 py-0.5 rounded-lg text-[11px] font-mono font-semibold transition-all whitespace-nowrap ${
-                  cameraPreset === cam.id
-                    ? 'bg-gradient-to-r from-rose-600 to-blue-600 text-white shadow-md shadow-rose-600/20 font-bold'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                {cam.label}
-              </button>
-            ))}
-
-            <div className="h-4 w-px bg-slate-700/80 mx-1 hidden md:block" />
-
-            {/* Lighting Rig Presets */}
-            <div className="flex items-center gap-1 text-[10px] font-mono text-amber-400 pr-1 border-r border-slate-800 mr-0.5 hidden md:flex">
-              <Sparkles className="w-3 h-3 text-amber-400" />
-              <span>LIGHT:</span>
-            </div>
-            {(
-              [
-                { id: 'CINEMATIC', label: '🎬 Cinematic', tip: 'Spider-Man warm dining + neon rims' },
-                { id: 'RESTAURANT', label: '🍷 Restaurant', tip: 'Warm intimate dining ambience' },
-                { id: 'ROBOT_LAB', label: '🤖 Robot Lab', tip: 'High-visibility technical studio' },
-                { id: 'SPIDER_NIGHT', label: '🕷️ Spider Night', tip: 'Dramatic high-contrast superhero noir' },
-              ] as const
-            ).map(preset => (
-              <button
-                key={preset.id}
-                onClick={() => setLightingPreset(preset.id)}
-                title={preset.tip}
-                className={`px-2 py-0.5 rounded-lg text-[11px] font-mono font-semibold transition-all whitespace-nowrap ${
-                  lightingPreset === preset.id
-                    ? 'bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-md shadow-amber-500/20 font-bold'
-                    : 'text-slate-400 hover:text-amber-200 hover:bg-slate-800/60'
-                }`}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-
-          <ThreeWorkspace3D
-            plan={plan}
-            leftArm={leftArm}
-            rightArm={rightArm}
-            activeItem={activeItem}
-            completedItems={completedItems}
-            isPlaying={isPlaying}
-            simSpeed={simSpeed}
-            selectedArm={selectedArm}
-            onSelectArm={setSelectedArm}
-            cameraPreset={cameraPreset}
-            onCameraPresetChange={setCameraPreset}
-            petActive={petActive}
-            petMode={petMode}
-            onPetTelemetryChange={setPetTelemetry}
-            lightingPreset={lightingPreset}
-          />
-        </div>
-
-        {/* RIGHT PANE: ROBOT STATUS & REAL-TIME JOINT VISUALIZATION */}
-        <div className="w-80 max-w-[320px] bg-slate-950/80 backdrop-blur-md border-l border-slate-800/80 flex flex-col p-3 gap-3 z-10 shrink-0 overflow-y-auto">
-          
-          {/* ROBOT STATUS HEADER */}
-          <div className="flex items-center justify-between pb-1 border-b border-slate-800">
-            <span className="text-xs font-bold text-white font-mono flex items-center gap-1.5">
-              <Activity className="w-3.5 h-3.5 text-cyan-400" />
-              <span>ROBOT STATUS & JOINTS</span>
+        {/* E. RIGHT EDGE HOVER ZONE & SUBTLE DISCOVERABILITY TAB INDICATOR */}
+        <div
+          onMouseEnter={handleRightEnter}
+          className="absolute right-0 top-0 bottom-0 w-8 z-20 cursor-pointer"
+          title="Hover right edge to open Robot Status & Joints"
+        />
+        <div
+          onMouseEnter={handleRightEnter}
+          onClick={handleRightEnter}
+          className={`absolute right-0 top-1/2 -translate-y-1/2 z-20 transition-all duration-300 cursor-pointer ${
+            isRightOpen || isRightPinned ? 'opacity-0 pointer-events-none translate-x-full' : 'opacity-90 hover:opacity-100 translate-x-0'
+          }`}
+        >
+          <div className="flex items-center gap-1.5 bg-slate-950/85 backdrop-blur-md border-y border-l border-blue-500/40 hover:border-blue-400 py-3.5 px-2 rounded-l-xl text-blue-300 font-mono shadow-xl shadow-blue-950/50 hover:shadow-blue-500/30 transition-all group">
+            <ChevronLeft className="w-3 h-3 text-blue-400 animate-pulse" />
+            <span className="[writing-mode:vertical-rl] rotate-180 tracking-widest text-[9px] font-bold uppercase text-slate-300 group-hover:text-blue-200">
+              Robot Status · 60Hz
             </span>
-            <span className="text-[10px] font-mono text-slate-400">60 Hz FEEDBACK</span>
+            <Activity className="w-3.5 h-3.5 text-blue-400 group-hover:scale-110 transition-transform" />
+          </div>
+        </div>
+
+        {/* F. RIGHT SLIDE-OUT PANEL: ROBOT STATUS & JOINTS */}
+        <aside
+          onMouseEnter={handleRightEnter}
+          onMouseLeave={handleRightLeave}
+          className={`absolute right-0 top-0 bottom-0 z-30 w-80 sm:w-88 max-w-[calc(100vw-3.5rem)] bg-slate-950/95 backdrop-blur-2xl border-l border-slate-800/90 shadow-2xl shadow-blue-950/60 flex flex-col p-3 gap-3 transition-transform duration-300 ease-in-out overflow-y-auto ${
+            isRightOpen || isRightPinned ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
+          }`}
+        >
+          {/* Header with Title, 60 Hz feedback, Pin & Close */}
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800/80 shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-lg bg-blue-950/90 border border-blue-500/40 flex items-center justify-center text-blue-400">
+                <Activity className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-white font-mono tracking-wider block">
+                  ROBOT STATUS & JOINTS
+                </span>
+                <span className="text-[10px] font-mono text-cyan-400">
+                  60 Hz FEEDBACK
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setIsRightPinned(!isRightPinned)}
+                className={`p-1.5 rounded-lg border text-xs transition-all ${
+                  isRightPinned
+                    ? 'bg-blue-500/20 border-blue-400 text-blue-300 shadow-sm shadow-blue-500/30'
+                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                }`}
+                title={isRightPinned ? 'Pinned open (Click to unpin)' : 'Pin panel open'}
+              >
+                {isRightPinned ? <Pin className="w-3.5 h-3.5 fill-blue-400 text-blue-400" /> : <Pin className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                onClick={() => {
+                  setIsRightPinned(false);
+                  setIsRightOpen(false);
+                }}
+                className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 transition-all"
+                title="Minimize Panel"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           {/* 🔴 RED LEFT ARM STATUS */}
@@ -933,7 +1176,7 @@ export const Integrated3DWorkspace: React.FC<Integrated3DWorkspaceProps> = ({
             </div>
           </div>
 
-        </div>
+        </aside>
 
       </div>
     </div>

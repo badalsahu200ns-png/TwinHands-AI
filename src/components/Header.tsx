@@ -61,9 +61,11 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-3">
           <div className="relative w-11 h-11 rounded-xl bg-gradient-to-tr from-red-600 via-rose-600 to-blue-600 flex items-center justify-center p-0.5 shadow-lg shadow-red-500/20 group">
             <div className="w-full h-full bg-[#080d1a] rounded-[10px] flex items-center justify-center relative overflow-hidden">
-              {/* Spider Emblem Detail */}
-              <div className="absolute inset-0 bg-gradient-to-b from-red-500/10 to-blue-500/10" />
-              <Bot className="w-5 h-5 text-slate-100 group-hover:scale-110 transition-transform relative z-10" />
+              <img 
+                src="/app-icon.png" 
+                alt="TwinHands-AI Icon" 
+                className="w-full h-full object-cover rounded-[9px] group-hover:scale-110 transition-transform relative z-10" 
+              />
             </div>
             {/* Small Glowing Corner Nodes */}
             <span className="absolute -top-0.5 -left-0.5 w-1.5 h-1.5 rounded-full bg-red-400 shadow-sm shadow-red-400" />
